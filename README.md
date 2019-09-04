@@ -1,9 +1,9 @@
 ![GitHub issues](https://img.shields.io/github/issues-raw/tibmeister/vPOSH?style=plastic)     ![GitHub](https://img.shields.io/github/license/tibmeister/vPOSH?style=plastic)
 # vPOSH
-PowerShell based framework for VMware vSphere.  As a framework, there will be a number of external modules that will be part of this framework.
+PowerShell based framework for VMware vSphere.  As a framework, there will be a number of external modules that will be part of this framework, but the core of the framework is in this repository.
 
 # Prerequisites
-Powershell v3 or higher must be installed along with PowerCLI v10 or higher.
+Powershell v5 or higher must be installed along with PowerCLI v10 or higher.
 
 # Installing / Getting Started
 a **vcenters.json** file must be present in the *.config* folder in order to allow for a Connect-vCenter cmdlet to function correctly.  the format of this file is as follows:
