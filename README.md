@@ -1,3 +1,4 @@
+![GitHub issues](https://img.shields.io/github/issues-raw/tibmeister/vPOSH?style=plastic)     ![GitHub](https://img.shields.io/github/license/tibmeister/vPOSH?style=plastic)
 # vPOSH
 PowerShell based framework for VMware vSphere.  As a framework, there will be a number of external modules that will be part of this framework.
 
