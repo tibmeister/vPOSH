@@ -6,7 +6,7 @@ PowerShell based framework for VMware vSphere.  As a framework, there will be a 
 Powershell v3 or higher must be installed along with PowerCLI v10 or higher.
 
 # Installing / Getting Started
-a **vcenters.json** file must be present in the *config* folder in order to allow for a Connect-vCenter cmdlet to function correctly.  the format of this file is as follows:
+a **vcenters.json** file must be present in the *.config* folder in order to allow for a Connect-vCenter cmdlet to function correctly.  the format of this file is as follows:
 
 ```
 [
@@ -18,7 +18,7 @@ a **vcenters.json** file must be present in the *config* folder in order to allo
 ]
 ```
 For *AutoConnect*, this is a true/false value and will be used to determine if the AutoConnect feature of the cmdlet is used.
-The valid values for *Environment* are listed in the **environments.json** file in the config directory.  This file has the format of:
+The valid values for *Environment* are listed in the **environments.json** file in the *.config* directory.  This file has the format of:
 
 ```
 [
