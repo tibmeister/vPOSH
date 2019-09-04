@@ -1,2 +1,17 @@
 # vPOSH
-PowerShell based framework for VMware vSphere
+PowerShell based framework for VMware vSphere.  As a framework, there will be a number of external modules that will be part of this framework.
+
+# Prerequisites
+Powershell v3 or higher must be installed along with PowerCLI v10 or higher.
+
+# Installing / Getting Started
+
+# Versioning
+Based on Semantec Versioning, the following will be used:
+*Major Version
+*Minor Version
+*Patch
+
+Any new module will trigger a Minor version change, as will any new feature being added.  Removing a feature or any other major changes that could break any existing code will trigger a Major version change.  General commits to fix issues or enhance existing features will trigger a Pathc increment.
+
+# Release History
