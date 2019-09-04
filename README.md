@@ -6,6 +6,31 @@ PowerShell based framework for VMware vSphere.  As a framework, there will be a 
 Powershell v3 or higher must be installed along with PowerCLI v10 or higher.
 
 # Installing / Getting Started
+a **vcenters.json** file must be present in the *config* folder in order to allow for a Connect-vCenter cmdlet to function correctly.  the format of this file is as follows:
+
+```
+[
+    {
+        "vCenter": "vCenterFQDN",
+        "AutoConnect": true,
+        "Environemnt": "Production"
+    }
+]
+```
+For *AutoConnect*, this is a true/false value and will be used to determine if the AutoConnect feature of the cmdlet is used.
+The valid values for *Environment* are listed in the **environments.json** file in the config directory.  This file has the format of:
+
+```
+[
+    {
+        "EnvironmentName":"Production"
+    },
+    {
+        "EnvironmentName":"Development"
+    }
+]
+```
+
 
 # Versioning
 Based on Semantec Versioning, the following will be used:
@@ -13,6 +38,6 @@ Based on Semantec Versioning, the following will be used:
 *Minor Version
 *Patch
 
-Any new module will trigger a Minor version change, as will any new feature being added.  Removing a feature or any other major changes that could break any existing code will trigger a Major version change.  General commits to fix issues or enhance existing features will trigger a Pathc increment.
+Any new module will trigger a Minor version change, as will any new feature being added.  Removing a feature or any other major changes that could break any existing code will trigger a Major version change.  General commits to fix issues or enhance existing features will trigger a Patch increment.
 
 # Release History
