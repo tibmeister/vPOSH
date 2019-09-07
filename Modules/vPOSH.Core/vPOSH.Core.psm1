@@ -1,0 +1,1804 @@
+<#
+	.SYNOPSIS
+		Common collection of frequently used Powershell and PowerCLI functions.
+	.DESCRIPTION
+		Common collection of frequently used Powershell and PowerCLI functions.  PowerCLI specific functions will have "[PowerCLI]" at the beginning of the Synopsis
+#>
+$global:vCenterCredentials = ''
+$global:VMGuestCredentials = ''
+
+#TODO: Check this function before release
+function Get-VMLastPowerTimes
+{
+    <#
+	.SYNOPSIS
+        [PowerCLI] Retrieves the power on/off times of one or more VMs
+    .DESCRIPTION
+        Retrieves the power on/off times of one or more VMs
+    .EXAMPLE
+        Get-VMLastPowerTimes -VMs "myVM1"
+    .EXAMPLE
+        Get-VMLastPowerTimes -VMs "myVM1","myVM2"
+    .PARAMETER VMs
+        Comma-delimited list of VMs
+    #>
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory=$true,
+		Position=0,
+		ValueFromPipeline=$true,
+		HelpMessage="Comma-delimited list of VMs")]
+		[String[]]$VMs
+	)
+
+    $results = foreach($VM in $VMs)
+    {
+        $eventsOn = $VM | Get-VIEvent -MaxSamples 10000 | Where {$_.FullFormattedMessage -like "*powered on*"}
+        $eventsOff = $VM | Get-VIEvent -MaxSamples 10000 | Where {$_.FullFormattedMessage -like "*powered off*"}
+
+        New-Object PSObject -Property @{
+            Name=$VM.Name
+            PowerState=$VM.PowerState
+            LastPowerOn=($eventsOn | Sort -Descending | select -Last 1 | select CreatedTime).CreatedTime
+            UserPowerOn=($eventsOn | Sort -Descending | select -Last 1 | select UserName).UserName
+            LastPowerOff=($eventsOff | Sort -Descending | select -Last 1 | select CreatedTime).CreatedTime
+            UserPowerOff=($eventsOff | Sort -Descending | select -Last 1 | select UserName).UserName
+        }
+    }
+
+    return $results
+}
+
+#TODO: Check this function before release
+function Get-VMCreationDates
+{
+	<#
+	.SYNOPSIS
+		[PowerCLI] Retrieves the creation date of one or more VMs
+	.DESCRIPTION
+		Retrieves the creation date of one or more VMs
+	.EXAMPLE
+		Get-VMCreationDates -VMs "myVM1"
+	.EXAMPLE
+		Get-VMCreationDates -VMs "myVM1","myVM2"
+	.PARAMETER Vms
+		Comma-delimited list of VMs
+	#>
+
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory=$true,
+		Position=0,
+		ValueFromPipeline=$true,
+		HelpMessage="Comma-delimited list of VMs")]
+		[String[]]$VMs
+	)
+
+	$outPut=foreach($vm in $VMs)
+	{
+		if(($vm.GetType()).Name -match "VirtualMachineImpl")
+		{
+			$VMobj = $vm
+		}
+		elseif($vm -match "@{Name=")
+		{
+			$tmpVMName = $vm -replace "@{Name=",""
+			$tmpVMName = $tmpVMName -replace "}",""
+			$VMobj = Get-VM $tmpVMName
+		}
+		else
+		{
+			$VMobj = Get-VM $vm
+		}
+
+		$evt = $vmObj | Get-VIEvent -MaxSamples 10000 -Types Info | Where { $_.Gettype().Name -eq "VmBeingDeployedEvent" -or $_.Gettype().Name -eq "VmCreatedEvent" -or $_.Gettype().Name -eq "VmRegisteredEvent" -or $_.Gettype().Name -eq "VmClonedEvent"}
+
+		if($evt)
+		{
+			New-Object PSObject -Property @{
+				Name = $VMobj.Name
+				CreatedDate = $evt.CreatedTime.ToShortDateString()
+			}
+		}
+	}
+
+	return $outPut
+}
+
+#TODO: Check this function before release
+function Move-OldFile
+{
+	<#
+	.SYNOPSIS
+		Performs a file rotation of the given file.
+	.DESCRIPTION
+		Performs a file rotation of the given file, moving the existing file to a new file with a sequence number in Parenthases
+	.EXAMPLE
+		Move-OldFile -OutputFile C:\Temp\test.xml
+	#>
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory=$true,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='Full Path and Name of the file to rotate')]
+		[string]$OutputFile
+	)
+
+	if(Test-Path -Path $OutputFile)
+	{
+		$baseFile = Get-Item -Path $OutputFile
+		$basePath = $baseFile.Directory
+		$baseFileName = $baseFile.BaseName
+		$files = @(Get-ChildItem -Path $basePath | Where-Object {$_.BaseName -match $baseFile.BaseName})
+		$newFile = "$basePath\$baseFileName(" + $files.Count + ')' + $baseFile.Extension
+		Move-Item -Path $baseFile -Destination $newFile
+	}
+}
+
+#TODO: Check this function before release
+function Get-GuestCredentials
+{
+	<#
+	.SYNOPSIS
+		[PowerCLI]Sets the global VMGuest Credentials that can be easily passed to cmdlets
+	.DESCRIPTION
+		Allows for easy setting of the global VMGuestCredentials variable
+	.PARAMETER ClearPreviousCreds
+		Clears out credentials stored in session memory
+	.EXAMPLE
+		Get-GuestCredentials
+	.EXAMPLE
+		Get-GuestCredentials -ClearPreviousCreds
+	#>
+	param
+	(
+		[Parameter(Mandatory=$false)]
+		[switch]$ClearPreviousCreds=$false
+	)
+
+	if($ClearPreviousCreds)
+	{
+		$global:VMGuestCredentials=$null
+	}
+
+	if(!$global:VMGuestCredentials)
+	{
+		$global:VMGuestCredentials = $Host.UI.PromptForCredential('VMGuest Credentials','Enter a set of credentials to access a VM Guest with','','')
+	}
+}
+
+#TODO: Check this function before release
+Function Connect-ESXiHost
+{
+	<#
+	.SYNOPSIS
+		[PowerCLI]Wrapper for Connect-VIServer
+	.DESCRIPTION
+		This is a wrapper for Connect-VIServer that allows for a stored session credential and checks for existing connections.
+		Also, you can pass a credential object into the command to allow for externally stored credentials to be used.
+	.EXAMPLE
+		Connect-ESXiHost -ESXiHosts myHost.mydomain.com
+	.EXAMPLE
+		Connect-ESXiHost -ESXiHosts myHost.mydomain.com -CredentialObject $credObject
+	.PARAMETER ESXiHosts
+		Name of host(s) to connect to
+	.PARAMETER CredentialObject
+		Credential object to use if you already have one
+	.PARAMETER ClearPreviousCreds
+		Clear out any previous credentials
+	#>
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory=$true,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='Which ESXi Host(s) to connect to')]
+        [alias("ESXiHost")]
+		[string[]]$ESXiHosts,
+
+		[Parameter(Mandatory=$false,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='Credential object to use')]
+		$CredentialObject='',
+
+		[Parameter(mandatory=$false,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='Clear out any previous credentials?')]
+		[switch]$ClearPreviousCreds=$false
+	)
+
+	foreach($ESXiHost in $ESXiHosts)
+	{
+		if($ClearPreviousCreds)
+		{
+			$global:vCenterCredentials=$Host.UI.PromptForCredential("Domain Credentials for ESXi Host $ESXiHost",'Enter your domain account used to access this ESXi Host','','')
+			$global:DefaultVIServers=$null
+		}
+
+		if($CredentialObject)
+		{
+			$global:vCenterCredentials=$CredentialObject
+		}
+		else
+		{
+			if(!$global:vCenterCredentials)
+			{
+				$global:vCenterCredentials=$Host.UI.PromptForCredential("Domain Credentials for ESXi Host $ESXiHost",'Enter your domain account used to access this ESXi Host','','')
+			}
+		}
+
+		if($global:DefaultVIServers -notcontains $ESXiHost)
+		{
+			Connect-VIServer -Server $ESXiHost -Credential $global:vCenterCredentials -ErrorAction Stop
+		}
+		if($?)
+		{
+			Write-Host $true
+		}
+		else
+		{
+			Write-Host $false
+		}
+	}
+}
+
+#TODO: Check this function before release
+function Get-RecentConnections
+{
+	<#
+		.SYNOPSIS
+			[PowerCLI]Gets the list of most recent connections in the current month
+	#>
+
+	[xml]$recentConnectionsFile = Get-Content "$env:APPDATA\VMware\PowerCLI\RecentServerList.xml"
+	return ($recentConnectionsFile.ServerList.Server | Where-Object {$_.($recentConnectionsFile.ServerList.CurrentMonth) -gt 0} | Select-Object Name)
+}
+
+#TODO: Completly refactor this function
+Function Connect-vCenter
+{
+	<#
+	.SYNOPSIS
+		[PowerCLI]Wrapper for Connect-VIServer
+	.DESCRIPTION
+		This is a wrapper for Connect-VIServer that allows for a stored session credential and checks for existing connections.
+		Also, you can pass a credential object into the command to allow for externally stored credentials to be used.
+	.EXAMPLE
+		Connect-vCenter -vCenters myvcenter.mydomain.com
+	.EXAMPLE
+		Connect-vCenter -vCenters myvcenter.mydomain.com -CredentialObject $credObject
+	.PARAMETER vCenters
+		Which vCenter(s) to connect to
+    .PARAMETER vCenter
+		Which vCenter to connect to
+	.PARAMETER CredentialObject
+		Credential object to use if you already have one
+	.PARAMETER ClearPreviousCreds
+		Clear out any previous credentials?
+	.PARAMETER UseSSPI
+		Use current users credentials
+	.PARAMETER Menu
+		Indicate that you want to select a connection server from a list of recently connected servers.
+	.PARAMETER SSHNoDomain
+		Creates a new SSHCredential object that strips the domain name (in format {domain}\{username}), by default this is done.
+	#>
+	[CmdletBinding(DefaultParameterSetName='base')]
+	param
+	(
+		[Parameter(Mandatory=$true,
+		HelpMessage='Which vCenter(s) to connect to',
+		ParameterSetName='base',
+		Position=0)]
+        [alias("vCenter")]
+		[string[]]$vCenters,
+
+		[Parameter(Mandatory=$false,
+		HelpMessage='Credential object to use',
+		ParameterSetName='base')]
+		[Parameter(ParameterSetName='menu')]
+		$CredentialObject='',
+
+		[Parameter(mandatory=$false,
+		HelpMessage='Clear out any previous credentials?',
+		ParameterSetName='base')]
+		[Parameter(ParameterSetName='menu')]
+		[Parameter(ParameterSetName='all')]
+		[switch]$ClearPreviousCreds=$false,
+
+		[Parameter(mandatory=$false,
+		HelpMessage='Use current users credentials',
+		ParameterSetName='base')]
+		[Parameter(ParameterSetName='menu')]
+		[Parameter(ParameterSetName='all')]
+		[Parameter(ParameterSetName='sspi')]
+		[switch]$UseSSPI=$false,
+
+		[Parameter(mandatory=$true,
+		HelpMessage='Indicate that you want to select a connection server from a list of recently connected servers.',
+		ParameterSetName='menu')]
+		[switch]$Menu=$false,
+
+		[Parameter(mandatory=$true,
+		HelpMessage='Indicate that you want to connect to all vCenters.',
+		ParameterSetName='all')]
+		[switch]$All=$false,
+
+		[Parameter(mandatory=$false,
+		HelpMessage="Strip domain from SSH Credentials",
+		ParameterSetName='base')]
+		[Parameter(ParameterSetName='all')]
+		[Parameter(ParameterSetName='menu')]
+		[Parameter(ParameterSetName='sspi')]
+		[switch]$SSHNoDomain=$true
+	)
+
+	if($Menu)
+	{
+		Clear-Host
+		[int]$i=1
+		#$recentConnections = Get-RecentConnections
+		if($ClearPreviousCreds)
+		{
+            Write-Verbose "Clearing previous credentials"
+			$recentConnections = Get-vCentersFromDashboard
+		}
+		elseif($CredentialObject)
+		{
+			$recentConnections = Get-vCentersFromDashboard
+		}
+        elseif($UseSSPI)
+        {
+            Write-Verbose "Using SSPI style conenction"
+            $recentConnections = Get-vCentersFromDashboard
+        }
+		else
+		{
+			$recentConnections = Get-vCentersFromDashboard
+		}
+
+		Write-Host "Items in " -NoNewline -ForegroundColor Yellow
+		Write-Host "Green " -NoNewline -ForegroundColor Green
+		Write-Host "are able to be contacted and selected.  Items in " -NoNewline -ForegroundColor Yellow
+		Write-Host "Red " -NoNewline -ForegroundColor Red
+		Write-Host "failed a ping check." -ForegroundColor Yellow
+		Write-Host
+
+		foreach($entry in $recentConnections)
+		{
+			if($entry.Length -gt 0)
+			{
+				if(!(Test-Connection -ComputerName $entry -Count 1 -Quiet))
+				{
+					Write-Host "$i - $($entry)" -ForegroundColor Red
+				}
+				else
+				{
+					Write-Host "$i - $($entry)" -ForegroundColor Green
+				}
+
+				$i++
+			}
+		}
+		[int]$menuChoice = Read-Host 'Please make a selection'
+
+		$vCenters = $($recentConnections[$menuChoice - 1])
+	}
+
+	if($All)
+	{
+        if($UseSSPI)
+        {
+            Write-Verbose "Using SSPI style connection"
+            $vCenters = Get-vCentersFromDashboard
+        }
+        else
+        {
+		    $vCenters = Get-vCentersFromDashboard
+        }
+	}
+
+	Write-Verbose "$vCenters"
+
+	foreach($vCenter in $vCenters)
+	{
+		if($vCenter.Length -gt 0)
+		{
+			if($UseSSPI)
+			{
+				Connect-VIServer -Server $vCenter -ErrorAction Stop
+			}
+			else
+			{
+				if($ClearPreviousCreds)
+				{
+					$global:vCenterCredentials=$Host.UI.PromptForCredential("Domain Credentials for vCenter",'Enter your domain account used to access this vCenter','','')
+					$global:DefaultVIServers=$null
+				}
+
+				if($CredentialObject)
+				{
+					$global:vCenterCredentials=$CredentialObject
+				}
+				else
+				{
+					if(!$global:vCenterCredentials)
+					{
+						$global:vCenterCredentials=$Host.UI.PromptForCredential("Domain Credentials for vCenter",'Enter your domain account used to access this vCenter','','')
+					}
+				}
+				if($global:DefaultVIServers -notcontains $vCenter)
+				{
+					if(Test-Connection -ComputerName $vCenter -Count 1 -Quiet)
+					{
+						Connect-VIServer -Server $vCenter -Credential $global:vCenterCredentials -ErrorAction SilentlyContinue | Out-Null
+						if($?)
+						{
+							Write-Host "Connected to $($vCenter)" -ForegroundColor Green
+						}
+						else
+						{
+							Write-Host "Could not connect to $($vCenter)" -ForegroundColor Red
+						}
+					}
+					else
+					{
+						Write-Host "Could not connect to $($vCenter)" -ForegroundColor Red
+					}
+				}
+			}
+		}
+	}
+}
+
+#TODO: Check this function before release
+Function Get-VMCPUReadyPercentDatacenter
+{
+	<#
+	.SYNOPSIS
+		[PowerCLI]Gathers the vCPU Ready % statistics for a given Datacenter for the given interval
+	.DESCRIPTION
+		Gathers the vCPU Ready % statistics for a given Datacenter for the given interval
+	.EXAMPLE
+		Get-VMCPUReadyPercentDatacenter -DataCenter prod -Interval day
+	.PARAMETER DataCenter
+		Which Datacenter to gather metrics from
+	.PARAMETER Interval
+		Interval for the metrics.  Valid values are day, week, month
+	#>
+	param
+	(
+		[Parameter(Mandatory=$true,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='Which Datacenter to gather metrics from')]
+		[string]$DataCenter,
+		[Parameter(Mandatory=$true,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='Interval for the metrics.  Valid values are day, week, month')]
+		[ValidateSet('day','week','month')]
+		[string]$Interval
+	)
+	Switch ($Interval)
+	{
+		'day' {$days=-1;$mins=5;$divider=3000}
+		'week' {$days=-7;$mins=30;$divider=18000}
+		'month' {$days=-30;$mins=120;$divider=72000}
+	}
+
+	$groups=Get-Stat -Entity (Get-vm -Location $DataCenter ) -Stat cpu.ready.summation -start (Get-date).adddays($days) -finish (Get-date) -interval $mins -instance '' -ea silentlycontinue|Group-Object entity
+
+	$output=@()
+	ForEach ($group in $groups)
+	{
+		$objOut = New-Object PSObject | Select-Object Name, CPURdyPcnt
+
+		$objOut.Name=$group.Name
+		$objOut.CPURdyPcnt= '{0:n2}' -f ((($group.group |measure-object value -ave).average/$divider) * 100 )
+		$output+=$objOut
+	}
+
+	return $output
+}
+
+#TODO: Check this function before release
+Function Get-VMCPUReadyPercentVM
+{
+	<#
+	.SYNOPSIS
+		[PowerCLI]Gathers the vCPU Ready % statistics for a given Datacenter for the given interval
+	.DESCRIPTION
+		Gathers the vCPU Ready % statistics for a given Datacenter for the given interval
+	.EXAMPLE
+		Get-VMCPUReadyPercentDatacenter -VMs fdxsql65,fdxsql66 -Interval day
+	.PARAMETER VMs
+		Which VM(s) to gather metrics from
+	.PARAMETER Interval
+		Interval for the metrics.  Valid values are day, week, month, year
+	#>
+	param
+	(
+		[Parameter(Mandatory=$true,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='Which VM(s) to gather metrics from')]
+		[string[]]$VMs,
+		[Parameter(Mandatory=$true,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='Interval for the metrics.  Valid values are day, week, month, year')]
+		[ValidateSet('day','week','month','year')]
+		[string]$Interval
+	)
+	Switch ($interval)
+	{
+		'day' {$days=-1;$mins=5;$divider=3000}
+		'week' {$days=-7;$mins=30;$divider=18000}
+		'month' {$days=-30;$mins=120;$divider=72000}
+		'year' {$days=-365;$mins=1440;$divider=864000}
+	}
+
+	$output=@()
+	foreach ($vm in $VMs)
+	{
+		$vmStat=Get-Stat -Entity (Get-vm -Name $vm ) -Stat cpu.ready.summation -start (Get-date).adddays($days) -finish (Get-date) -interval $mins -instance '' -ea silentlycontinue|Group-Object entity
+		$objOut = New-Object PSObject | Select-Object Name, CPURdyPcnt
+
+		$objOut.Name=$vmStat.Name
+		$objOut.CPURdyPcnt= '{0:n2}' -f ((($vmStat.group |measure-object value -ave).average/$divider) * 100)
+		$output+=$objOut
+	}
+
+	return $output
+}
+
+#TODO: Check this function before release
+Function Watch-Command
+{
+	<#
+	.SYNOPSIS
+		[PowerCLI]Continually runs a command at the specified interval
+	.DESCRIPTION
+		Continually runs a command at the specified interval
+	.EXAMPLE
+		Watch-Command -CommandToRun Get-proc
+	.EXAMPLE
+		Watch-Command -CommandToRun Get-proc -WaitSeconds 5
+	.PARAMETER CommandToRun
+		Command to run in the form of a script block.
+	.PARAMETER WaitSeconds
+		Amount of time to wait to repeat the task, in seconds.  Default of 5.
+	#>
+	param
+	(
+		[Parameter(Mandatory=$true,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='Command to run in the form of a script block')]
+		[scriptblock]$CommandToRun,
+		[Parameter(Mandatory=$false,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='Amount of time to wait to repeat the task, in seconds.  Default of 5')]
+		[int]$WaitSeconds=5
+	)
+
+	$private:sb = New-Object System.Text.StringBuilder
+	$private:w0 = $private:h0 = 0
+	for(;;)
+	{
+
+	    # invoke command, format output data
+	    $private:n = $sb.Length = 0
+	    $private:w = $Host.UI.RawUI.BufferSize.Width
+	    $private:h = $Host.UI.RawUI.WindowSize.Height-1
+	    [void]$sb.EnsureCapacity($w*$h)
+	    .{
+	        & $CommandToRun | Out-String -Stream | .{process{
+	            if ($_ -and ++$n -le $h)
+				{
+	                $_ = $_.Replace("`t", ' ')
+	                if ($_.Length -gt $w)
+					{
+	                    [void]$sb.Append($_.Substring(0, $w-1) + '*')
+	                }
+	                else
+					{
+	                    [void]$sb.Append($_.PadRight($w))
+	                }
+	            }
+	        }}
+	    }>$null
+
+	    # fill screen
+	    if ($w0 -ne $w -or $h0 -ne $h)
+		{
+	        $w0 = $w; $h0 = $h
+	        Clear-Host; $private:origin = $Host.UI.RawUI.CursorPosition
+	    }
+	    else
+		{
+	        $Host.UI.RawUI.CursorPosition = $origin
+	    }
+	    Write-Host $sb -NoNewLine
+	    $private:cursor = $Host.UI.RawUI.CursorPosition
+	    if ($n -lt $h)
+		{
+	        Write-Host (' '*($w*($h-$n)+1)) -NoNewLine
+	    }
+	    elseif($n -gt $h)
+		{
+	        Write-Host '*' -NoNewLine
+	    }
+	    $Host.UI.RawUI.CursorPosition = $cursor
+	    Start-Sleep $WaitSeconds
+
+	}
+}
+
+#TODO: Check this function before release
+Function Start-RollingReboot
+{
+	<#
+	.SYNOPSIS
+		[PowerCLI]Performs a rolling reboot of hosts that are supplied
+	.DESCRIPTION
+		Performs a rolling reboot of hosts that are supplied, for instance all hosts in a cluster, etc.  This will place the host in Maintenance Mode,
+		reboot the host, wait for the hsot to return to the Maintenance status, then bring the host out of Maintenance Mode and continue to the next
+		host in the supplied array.
+	.EXAMPLE
+		Start-RollingReboot -VMHostsToReboot "vlabapp19.uu.deere.com","vlabapp18.uu.deere.com"
+	.PARAMETER VMHostsToReboot
+		Array of VM Hosts you wish to reboot in a rolling fashion.  The order of this array is not modified from what is supplied.
+	.PARAMETER HostPause
+		Pause between hosts to allow the cluster DRS to normalize in seconds.  Defaults to 300 seconds, or 5 minutes.
+	#>
+	param
+	(
+		[Parameter(Mandatory=$true,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='VM Hosts to Reboot in a rolling fashion')]
+		[string[]]$VMHostsToReboot,
+
+		[Parameter(Mandatory=$false,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='Pause between hosts in seconds')]
+		[int]$HostPause = 300
+	)
+
+	foreach ($VMHostToReboot in $VMHostsToReboot)
+	{
+		[switch]$MaintMode=$false
+
+		$tmpVMHost = Get-VMHost $VMHostToReboot -WarningAction SilentlyContinue
+		if($tmpVMHost)
+		{
+			if($tmpVMHost.State -eq "Maintenance")
+			{
+				$MaintMode=$true
+			}
+			else
+			{
+				$tmpVMHost | Set-VMHost -State Maintenance -Evacuate -Confirm:$false -ErrorAction Stop
+			}
+
+			$tmpVMHost | Restart-VMHost -Confirm:$false | Out-Null
+
+			# Wait for Server to show as down
+			do
+			{
+				Start-Sleep 15
+				$ServerState = (Get-vmhost $VMHostToReboot).ConnectionState
+			}
+			while ($ServerState -ne 'NotResponding')
+
+			Write-Host "$VMHostToReboot is Down"
+
+			do
+			{
+				Start-Sleep 60
+				$ServerState = (Get-vmhost $VMHostToReboot).ConnectionState
+				Write-Host 'Waiting for Reboot ...'
+			}
+			while ($ServerState -ne 'Maintenance')
+
+			Write-Host "$VMHostToReboot is back up"
+
+			if(!$MaintMode)
+			{
+				Set-VMHost $VMHostToReboot -State Connected -ErrorAction Stop
+			}
+
+			#Wait 5 minutes for DRS to normalize before moving to the next host
+			Write-Host "Waiting 5 minutes for DRS to normalize"
+			Start-Sleep -Seconds $HostPause
+		}
+	}
+}
+
+#TODO: Check this function before release
+Function Wait-VMShutdown
+{
+	<#
+	.SYNOPSIS
+		[PowerCLI]Waits for a VM to power off
+	.DESCRIPTION
+		When shutting down a VM, it returns when the shutdown command is good, not waiting for the VM to actually power off.
+		This will wait for the VM to completly power off.
+	.EXAMPLE
+		Wait-VMShutdown -VM (Get-VM linuxtest-fsdevcr3)
+	.PARAMETER VMName
+		Name of VM Object to watch
+	.PARAMETER WaitSeconds
+		Number of seconds before performing a hard kill, defaults to 360 (5 min)
+	.NOTES
+    	Author: Jody Whitlock
+    	Date:   April 1, 2014
+	#>
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory=$true,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='Name of VM Object to watch')]
+		[string]$VMName,
+
+		[Parameter(Mandatory=$false,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='Number of seconds before performing a hard kill')]
+		[int]$WaitSeconds = 360
+	)
+	process
+	{
+		#Check to see if we are connected, if not, warn the user to connect first and exit
+		if(!$global:DefaultVIServer)
+		{
+			Write-Host ''
+			Write-Host 'You must first connect to a vCenter before proceeding' -ForegroundColor Red
+			Exit
+		}
+
+		$tempvm = Get-VM $VMName
+		$guestView = Get-View -ViewType VirtualMachine -Filter @{'Name'=$tempvm.Name}
+
+		$guestView.UpdateViewData('Runtime.PowerState')
+		if ($guestView.Runtime.PowerState -ne 'poweredOff')
+		{
+			$tempVM | Wait-Tools -TimeoutSeconds $WaitSeconds
+			Shutdown-VMGuest -VM $tempVM -Confirm:$false
+			$guestView.UpdateViewData('Runtime.PowerState')
+		}
+		$i = 0
+      $waitRemain = $WaitSeconds
+
+		while (($guestView.Runtime.PowerState -ne 'poweredOff') -and ($i -le [Math]::Ceiling($WaitSeconds / 5)))
+		{
+			Write-Progress -id 99337 -Activity "Wait for VM Shutdown" -SecondsRemaining $waitRemain
+			Start-Sleep -Seconds 5
+			try
+			{
+				$guestView.UpdateViewData('Runtime.PowerState')
+			}
+			catch
+			{
+			}
+			$i++
+			$waitRemain = $waitRemain - 5
+		}
+		Write-Progress -id 99337 -Completed -Activity "Wait for VM Shutdown"
+	}
+	end
+	{
+		return $tempvm
+	}
+}
+
+#TODO: Check this function before release
+Function Get-vCenterSessions
+{
+    <#
+        .SYNOPSIS
+            Lists vCenter Sessions.
+        .DESCRIPTION
+            Lists all connected vCenter Sessions, and some added properties such as idle time.
+        .EXAMPLE
+            PS C:\> Get-vCenterSessions
+        .EXAMPLE
+            PS C:\> Get-vCenterSessions | Where { $_.IdleMinutes -gt 5 }
+    #>
+
+	[CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory=$false,
+		ParameterSetName='export')]
+		[switch]$ExportCSV,
+
+		[Parameter(Mandatory=$true,
+		ParameterSetName='export')]
+		[string]$ExportPath
+	)
+
+    $SessionMgr = Get-View $DefaultViserver.ExtensionData.Client.ServiceContent.SessionManager
+    $AllSessions = @()
+    $SessionMgr.SessionList | Foreach {
+        $Session = New-Object -TypeName PSObject -Property @{
+            Key = $_.Key
+            UserName = $_.UserName
+            FullName = $_.FullName
+            LoginTime = ($_.LoginTime).ToLocalTime()
+            LastActiveTime = ($_.LastActiveTime).ToLocalTime()
+
+        }
+        If ($_.Key -eq $SessionMgr.CurrentSession.Key)
+		{
+            $Session | Add-Member -MemberType NoteProperty -Name Status -Value 'Current Session'
+        } Else
+		{
+            $Session | Add-Member -MemberType NoteProperty -Name Status -Value 'Idle'
+        }
+        $Session | Add-Member -MemberType NoteProperty -Name IdleMinutes -Value ([Math]::Round(((Get-Date) – ($_.LastActiveTime).ToLocalTime()).TotalMinutes))
+    	$AllSessions += $Session
+    }
+
+	if($ExportCSV)
+	{
+		$AllSessions | Export-Csv -NoTypeInformation -Path $ExportPath -NoClobber
+	}
+
+    return $AllSessions
+}
+
+#TODO: Check this function before release
+function Get-LastPowerOn
+{
+	<#
+		.SYNOPSIS
+			Retrieves the last time a VM was powered on
+		.DESCRIPTION
+			Retrieves the last time a VM was powered on
+		.EXAMPLE
+			Get-LastLogOn -VM vm-object
+		.PARAMETER VM
+			VM to work on.
+	#>
+	param
+	(
+		[Parameter(Mandatory=$true,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true,
+		HelpMessage='VM Object')]
+		[VMware.VimAutomation.Types.VirtualMachine]$VM
+#		[Parameter(Mandatory=$false,
+#		HelpMessage='Hours timeframe')]
+#		[string]$Hours=""
+	)
+
+#	if($Hours)
+#	{
+#		$events = $VM | Get-VIEvent -Start (Get-Date).AddHours($Hours) | where {$_.FullFormattedMessage -match "Power On Virtual"}
+#	}
+#	else
+#	{
+		$events = $VM | Get-VIEvent | Where-Object {$_.FullFormattedMessage -match 'Power On Virtual'}
+#	}
+
+	return ($events | Select-Object -Last 1 | Select-Object @{N='VM';E={$_.VM.Name}},@{N='LastPoweredOnTime';E={$_.CreatedTime}})
+}
+
+#TODO: Check this function before release
+function Get-ConsolidationRatio
+{
+    <#
+    .SYNOPSIS
+        Retrieves the consolidation ratio of vRAM and vCPU in a given Datacenter/Cluster
+    .DESCRIPTION
+        Retrieves the consolidation ratio of vRAM and vCPU in a given Datacenter/Cluster
+    .PARAMETER Datacenters
+        Comma-seperated list of Datacenter(s) you wish the script to act on.  If this is left blank, it will get all datacenters on the vCenter
+    .EXAMPLE
+	    Get-consolidationRatio.ps1 -Datacenters "fdxvcr3"
+        Get-consolidationRatio.ps1 -Datacenters "fdxvcr3","fsdevcr3"
+    .NOTES
+        Author: Jody Whitlock
+        Date:   January 8, 2014
+	    LastModified: May 9, 2014
+    #>
+
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory=$false,
+        Position=0,
+	    HelpMessage='Comma-seperated list of Datacenter(s) you wish the script to act on.')]
+	    [string[]]$Datacenters
+    )
+
+    #Clear-Host
+
+    #Check to see if we are connected, if not, warn the user to connect first
+    if(!$global:DefaultVIServer)
+    {
+	    Write-Host ''
+	    Write-Host 'You must first connect to a vCenter before proceeding' -ForegroundColor Red
+	    Exit
+    }
+
+    if(!$Datacenters)
+    {
+       $Datacenters = Get-Datacenter
+    }
+
+    $objDataCenters=Foreach ($dc in $Datacenters)
+    {
+	    $cluster = get-cluster -location $dc
+	    $objClusters=foreach ($cl in $cluster)
+	    {
+		    $ClusterVMs = $cl | Get-VM
+		    if($ClusterVMs.Count -gt 0)
+		    {
+			    $ClusterMemory = [math]::round($cl.ExtensionData.Summary.TotalMemory / 1GB,0)
+
+			    $ClusterCPUCores = $cl.ExtensionData.Summary.NumCpuCores
+
+			    $ClusterAllocatedvCPUs = ($ClusterVMs | Measure-Object -Property NumCPu -Sum).Sum
+			    $ClusterAllocatedvRAM = [Math]::Round(($ClusterVMs | Measure-Object -Property MemoryGB -Sum).Sum,0)
+
+			    $CPUClusterRatio = 0
+			    $RAMClusterRatio = 0
+
+
+			    try
+			    {
+				    $CPUClusterRatio = [math]::round($ClusterAllocatedvCPUs / $ClusterCPUCores,2)
+			    }
+			    catch
+			    {
+			    }
+
+			    try
+			    {
+				    $RAMClusterRatio = [Math]::Round($ClusterAllocatedvRAM / $ClusterMemory,2)
+			    }
+			    catch
+			    {
+			    }
+
+          New-Object PSObject -Property @{
+              'Cluster Name'=$cluster
+              'pCPU Available'=$ClusterCPUCores
+              'vCPU Allocated'=$ClusterAllocatedvCPUs
+              'pRAM Available'=$ClusterMemory
+              'vRAM Allocated'=$ClusterAllocatedvRAM
+              'v/pCPU Ratio'=" $CPUClusterRatio : 1"
+              'v/pRAM Ratio'=" $RAMClusterRatio : 1 "
+          }
+       }
+
+        New-Object PSObject -Property @{
+            Datacenter=$dc
+            Clusters=$objClusters
+        }
+	    }
+    }
+
+    return $objDatacenters
+}
+
+#TODO: Check this function before release
+function Get-ConsoleAsText
+{
+	<#
+    .SYNOPSIS
+        The script captures console screen buffer up to the current cursor position and returns it in plain text format.
+    .DESCRIPTION
+        The script captures console screen buffer up to the current cursor position and returns it in plain text format. ASCII-encoded string.
+    .PARAMETER Datacenter
+        Comma-seperated list of Datacenter(s) you wish the script to act on.  If this is left blank, it will get all datacenters on the vCenter
+    .EXAMPLE
+	    $textFileName = "$env:temp\ConsoleBuffer.txt"
+		Get-ConsoleAsText | out-file $textFileName -encoding ascii
+    .NOTES
+        Author: Jody Whitlock
+        Date:   May 23, 2014
+	    LastModified: May 23, 2014
+    #>
+
+	# Check the host name and exit if the host is not the Windows PowerShell console host.
+	if ($host.Name -ne 'ConsoleHost')
+	{
+	  write-host -ForegroundColor Red "This script runs only in the console host. You cannot run this script in $($host.Name)."
+	  exit -1
+	}
+
+	# Initialize string builder.
+	$textBuilder = new-object system.text.stringbuilder
+
+	# Grab the console screen buffer contents using the Host console API.
+	$bufferWidth = $host.ui.rawui.BufferSize.Width
+	$bufferHeight = $host.ui.rawui.CursorPosition.Y
+	$rec = new-object System.Management.Automation.Host.Rectangle 0,0,($bufferWidth - 1),$bufferHeight
+	$buffer = $host.ui.rawui.GetBufferContents($rec)
+
+	# Iterate through the lines in the console buffer.
+	for($i = 0; $i -lt $bufferHeight; $i++)
+	{
+	  for($j = 0; $j -lt $bufferWidth; $j++)
+	  {
+	    $cell = $buffer[$i,$j]
+	    $null = $textBuilder.Append($cell.Character)
+	  }
+	  $null = $textBuilder.Append("`r`n")
+	}
+
+	return $textBuilder.ToString()
+}
+
+#TODO: Check this function before release
+function Get-VMXPath
+{
+	<#
+    .SYNOPSIS
+        [PowerCLI]The will return the full path to a VMs VMX file, useful in regestering a VM on a new host
+    .DESCRIPTION
+        The will return the full path to a VMs VMX file, useful in regestering a VM on a new host
+    .PARAMETER VM
+        The VM object you need the VMX file for
+    .EXAMPLE
+	    Get-VM myVM | Get-VMX
+		Get-Datacenter MyDC | Get-VM | %{Get-VMX $_}
+    .NOTES
+        Author: Jody Whitlock
+        Date:   June 26, 2014
+	    LastModified: June 26, 2014
+    #>
+	[CmdletBinding()]
+	Param
+	(
+		[Parameter(Mandatory=$true,
+		Position=1,
+		ValueFromPipeline=$true,
+		ValueFromPipelineByPropertyName=$true)]
+		[VMware.VimAutomation.Types.VirtualMachine]$VM
+	)
+
+	Begin
+	{
+		Write-Verbose "Retrieving VMX Path Info . . ."
+	}
+	Process
+	{
+		try
+		{
+			$VM | Add-Member -MemberType ScriptProperty -Name 'VMXPath' -Value {$this.extensiondata.config.files.vmpathname} -Passthru -Force | Select-Object Name,VMXPath
+		}
+		catch
+		{
+			"Error: You must connect to vCenter first." | Out-host
+		}
+	}
+	End
+	{
+
+	}
+}
+
+#TODO: Check this function before release
+function Get-ConnectedvCenters
+{
+	$vCenterData = @()
+
+	foreach($vCenter in $global:DefaultVIServers)
+	{
+		$vCenter | Select Name, Version, Build, User
+	}
+
+	return $vCenterData
+}
+
+#TODO: Completly refactor this function before release
+function Get-AllvCenters
+{
+	<#
+	.Synopsis
+	   	[PowerCLI]Retrieves the list of vCenter servers from the vcenters file on ldxinfraweb1
+	.DESCRIPTION
+	   	Retrieves the list of vCenter servers from the vcenters file on ldxinfraweb1
+	.PARAMETER CredentialObject
+		Credential object to use
+	.PARAMETER ClearPreviousCreds
+		Switch to clear out any previous credentials?
+	.PARAMETER SSHNoDomain
+		Creates a new SSHCredential object that strips the domain name (in format {domain}\{username}), by default this is not done.
+	.EXAMPLE
+		Get-AllvCenters
+	   	Get-AllvCenters -ClearPreviousCreds
+	#>
+    [CmdletBinding()]
+	param
+	(
+		[Parameter(Mandatory=$false,
+		HelpMessage='Credential object to use')]
+		$CredentialObject='',
+
+		[Parameter(mandatory=$false,
+		HelpMessage='Clear out any previous credentials?')]
+		[switch]$ClearPreviousCreds=$false,
+
+		[Parameter(mandatory=$false,
+		HelpMessage="Strip domain from SSH Credentials")]
+		[switch]$SSHNoDomain=$false
+
+#        [Parameter(Mandatory=$false,
+#        HelpMessage='Use current Credentials')]
+#        [switch]$UseCurrentCreds=$false
+	)
+	if($ClearPreviousCreds)
+	{
+		$global:vCenterCredentials=$Host.UI.PromptForCredential("Domain Credentials for vCenter",'Enter your domain account used to access this vCenter','','')
+		$global:DefaultVIServers=$null
+	}
+	elseif($CredentialObject)
+	{
+		$global:vCenterCredentials=$CredentialObject
+	}
+	elseif(!$vCenterCredentials -and !$UseCurrentCreds)
+	{
+		$global:vCenterCredentials=$Host.UI.PromptForCredential("Domain Credentials",'Enter your domain Admin account','','')
+	}
+
+#    if($UseCurrentCreds)
+#    {
+#        $vCenters = Get-Content \\ldxinfraweb1.dx.deere.com\public\vcservers
+#        Write-Verbose "$vCenters"
+#    }
+#    else
+#    {
+
+	if($SSHNoDomain)
+	{
+		$global:SSHCredentials = New-Object System.Management.Automation.PSCredential("\$($vCenterCredentials.UserName.Split("\")[1])",$vCenterCredentials.Password)
+	}
+	else
+	{
+		$global:SSHCredentials = $vCenterCredentials
+	}
+
+	$ldxinfraweb1_session = New-SSHSession -ComputerName ldxinfraweb1.dx.deere.com -Credential $SSHCredentials -AcceptKey:$true
+
+    $results = $ldxinfraweb1_session | Invoke-SSHCommand -Command "cat /opt/vmwareutils/vcservers"
+
+	Remove-SSHSession -Index $ldxinfraweb1_session.Index -ErrorAction SilentlyContinue
+
+    $vCenters = foreach($item in ($results.Output -split "`n"))
+    {
+	    New-Object PSObject -Property @{
+		    vCenter = $item
+	    }
+    }
+#    }
+
+	return $vCenters
+}
+
+#TODO: Check this function before release
+function Get-Lsh
+{
+    <#
+    .SYNOPSIS
+        Bitwise Left-Shift
+    .DESCRIPTION
+        Bitwise Left-Shift
+    .PARAMETER n
+    .PARAMETER bits
+    #>
+    [CmdletBinding()]
+    param
+    (
+        [uint32]$n,
+
+        [byte]$bits
+    )
+
+    $n * [Math]::Pow(2, $bits)
+}
+
+#TODO: Check this function before release
+function Get-VersionStringAsObject
+{
+    <#
+	.SYNOPSIS
+		Takes a dot-noted versions string (major.minor.build) and converts it into a parsable object
+	.DESCRIPTION
+		Takes a dot-noted versions string (major.minor.build) and converts it into a parsable object
+	.PARAMETER VersionString
+    #>
+    [CmdletBinding()]
+	param
+	(
+		[CmdletBinding()]
+		[Parameter(Mandatory=$true)]
+		[String]$VersionString
+	)
+
+	$parts = $VersionString.Split(".")
+
+	if($parts.Count -le 3)
+	{
+		$tmpObj = New-Object PSObject -Property @{
+			Major = $parts[0]
+			Minor = $parts[1]
+			Build = $parts[2]
+		}
+	}
+	else
+	{
+		$tmpObj = New-Object PSObject -Property @{
+			Major = $parts[0]
+			Minor = $parts[1]
+			Build = $parts[2]
+		}
+	}
+
+	return $tmpObj
+}
+
+#TODO: Check this function before release
+function Get-VersionStringAsArray
+{
+    <#
+    .SYNOPSIS
+        Returns a dotted version string as a numeric array for easier comparision
+    .DESCRIPTION
+        Returns a version number "a.b.c.d" as a two-element numeric array. The first array element is the most significant 32 bits, and the second element is the least significant 32 bits.
+    .PARAMETER Version
+        Dotted Version number string
+    #>
+    [CmdletBinding()]
+    param
+    (
+        [string]$version
+    )
+
+    $parts = $version.Split(".")
+    if ($parts.Count -lt 5)
+    {
+        for ($n = $parts.Count; $n -lt 5; $n++)
+        {
+            $parts += "0"
+        }
+    }
+    [UInt32] ((Get-Lsh $parts[1] 16) + $parts[2])
+}
+
+#TODO: Check this function before release
+function Test-IsEven
+{
+	param
+	(
+		[string]$NumToCheck
+	)
+
+	[bool]$retVal = $true
+
+	if([Math]::Truncate( [Int32]($NumToCheck % 2) ))
+	{
+		$retVal = $false
+	}
+
+	return $retVal
+}
+
+#TODO: Check this function before release
+function Get-HostRAMUsage
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory=$false)]
+        [int]$Threshold = 80,
+
+        [Parameter(Mandatory=$true)]
+        [string[]]$MailRecipients
+    )
+
+    $oItem=get-vmhost | Where {[int]($_.PercentUsedRAM -replace '%') -gt $Threshold} | Select Name, Parent, PercentUsedRAM | Sort-Object -Property PercentUsedRAM -Descending
+
+    if($oItem)
+    {
+        $Css = "<style type=$([char]34)text/css$([char]34)>"
+	    $Css += Get-Content '\\jdshare\GHNSVirtualization\VMWARE\PowerCLI\Scripts\Support Files\General.css'
+	    $Css += "</style>"
+
+        $j=$oItem | ConvertTo-Html -PreContent "Hosts with greater than $($Threshold)% memory usage" -Head $Css
+        Send-MailMessage -Body "$j" -BodyAsHtml -To $MailRecipients -From "NoReply@johndeere.com" -SmtpServer mail.dx.deere.com -Subject "Test"
+    }
+}
+
+#TODO: Check this function before release
+function Get-VMPerfStat
+{
+    <#
+	.SYNOPSIS
+		[PowerCLI]Get's the given VM's performance stats
+	.DESCRIPTION
+		Get's the given VM's performance stats and returns the results as either the average of CPU and Mem over the given time period or as the raw values
+	.PARAMETER VMName
+		Name of the VM to get data for
+	.PARAMETER Hours
+		Hours to go back from current time; defaults to 6
+	.PARAMETER rawData
+		Returns an object of rawData instead of avereged data
+	.OUTPUT
+		PSObject
+	.EXAMPLE
+		Just get the averaged data for the default of 6 hours
+
+		Get-VMPerfStat -VMName (get-vm myVMName).Name
+	.EXAMPLE
+		Get the averaged data for the last 2 hours
+
+		Get-VMPerfStat -VMName (get-vm myVMName).Name -Hours 2
+	.EXAMPLE
+		Get the raw data returned as arrays in the object's members.
+
+		$myVariable = Get-VMPerfStat (get-vm myVMName).Name -rawData
+    #>
+    [CmdletBinding()]
+    param
+	(
+			[string]$VMName,
+            [int]$Hours = 6,
+			[switch]$rawData
+    )
+
+
+    $vm = Get-VM $VMName
+
+	$cpustat = $vm | Get-Stat -Stat cpu.usage.average -Start (Get-Date).AddHours(($Hours * -1)) -Finish (Get-Date) | where{ $_.Instance -eq "" }
+    $cpuuse = ( $cpustat | Measure-Object -Property Value -Maximum -Minimum -Average )
+
+    $memstat = $vm | Get-Stat -Stat mem.usage.average -Start (Get-Date).AddHours(($Hours * -1)) -Finish (Get-Date) | where{ $_.Instance -eq "" }
+    $memuse = ( $memstat | Measure-Object -Property Value -Maximum -Minimum -Average )
+
+	if($rawData)
+	{
+		$PerfStat = New-Object PSObject -Property @{
+			VMName = $VMName
+			"CpuUsageRaw" = $cpustat
+			"MemUsageRaw" = $memstat
+			"TimeStart" = (Get-Date).AddHours(($Hours * -1))
+			"TimeSpan" = $Hours
+		}
+	}
+	else
+	{
+		$PerfStat = New-Object PSObject -Property @{
+			VMName = $VMName
+			"CPUAv%" = ( [System.Math]::Round( $cpuuse.Average,2 ) )
+			"CPUMax%" = ( [System.Math]::Round( $cpuuse.Maximum,2 ) )
+			"CPUMin%" = ( [System.Math]::Round( $cpuuse.Minimum,2 ) )
+			"MemAv%" = ( [System.Math]::Round( $memuse.Average,2 ) )
+			"MemMax%" = ( [System.Math]::Round( $memuse.Maximum,2 ) )
+			"MemMin%" = ( [System.Math]::Round( $memuse.Minimum,2 ) )
+		}
+	}
+
+	return $PerfStat
+}
+
+#TODO: Check this function before release
+function Get-VMHostPerfStat
+{
+   param ( [string]$VMhostName,
+      [int]$Days = "30"
+   )
+   Begin
+   {
+      $PerfStat = New-Object PSObject
+      $VMhost = Get-VMhost $VMhostName
+      $todayMidnight = ( Get-Date -Hour 0 -Minute 0 -Second 0 ).AddMinutes( -1 )
+
+
+      $cpustat = $VMhost | Get-Stat -Stat cpu.usage.average -Start $todayMidnight.AddDays( - $Days ) -Finish $todayMidnight.AddDays( -1 ) | where { $_.Instance -eq "" }
+      $cpuuse = ( $cpustat | Measure-Object -Property Value -Maximum -Minimum -Average )
+      $memstat = $VMhost | Get-Stat -Stat mem.usage.average -Start $todayMidnight.AddDays( - $Days ) -Finish $todayMidnight.AddDays( -1 ) | where { $_.Instance -eq "" }
+      $memuse = ( $memstat | Measure-Object -Property Value -Maximum -Minimum -Average )
+   }
+   Process
+   {
+      $PerfStat | add-member -MemberType NoteProperty -name "VMhostName" -Value $VMhost.Name
+      $PerfStat | add-member -MemberType NoteProperty -name "CPUAv%" -Value ( [System.Math]::Round( $cpuuse.Average, 2 ) )
+      $PerfStat | add-member -MemberType NoteProperty -name "CPUMax%" -Value ( [System.Math]::Round( $cpuuse.Maximum, 2 ) )
+      $PerfStat | add-member -MemberType NoteProperty -name "CPUMin%" -Value ( [System.Math]::Round( $cpuuse.Minimum, 2 ) )
+      $PerfStat | add-member -MemberType NoteProperty -name "MemAv%" -Value ( [System.Math]::Round( $memuse.Average, 2 ) )
+      $PerfStat | add-member -MemberType NoteProperty -name "MemMax%" -Value ( [System.Math]::Round( $memuse.Maximum, 2 ) )
+      $PerfStat | add-member -MemberType NoteProperty -name "MemMin%" -Value ( [System.Math]::Round( $memuse.Minimum, 2 ) )
+   }
+   End
+   {
+      $PerfStat
+
+   }
+}
+
+#TODO: Check this function before release
+function Get-CapacityPlanningData
+{
+    <#
+        .SYNOPSIS
+            [PowerCLI] Get's the Capacity Planning data
+        .DESCRIPTION
+            Get's the Capacity Planning data for a specified cluster(s) or all connected clusters
+        .PARAMETER Clusters
+            Non-mandatory parameter that is a comma-seperated list
+        .EXAMPLE
+            Get the capacity report for all clusters on all connected vCenters and output to a GridView
+
+            Get-CapacityPlanningData | Out-GridView
+        .EXAMPLE
+            Get the capacity report for a specific cluster
+
+            Get-CapacityPlanningData -Clusters Cluster1
+        .EXAMPLE
+            Get the capacity report for a specific clusters
+
+            Get-CapacityPlanningData -Clusters Cluster1, Cluster2, Cluster3
+        .INPUTS
+            Cluster names
+        .OUTPUTS
+            Custom object
+        .NOTES
+            Author: Jody Whitlock
+            Date:   March 25, 2015
+	        LastModified: March 25, 2015
+    #>
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory=$false)]
+        [string[]]$Clusters
+    )
+
+	$yesterdayStart = (Get-Date -Hour 0 -Minute 0 -Second 0).AddDays(-1)
+	$todayStart = (Get-Date -Hour 0 -Minute 0 -Second 0)
+
+	if(!($clusters))
+	{
+		$clusters = Get-Cluster
+	}
+
+	$retObj = foreach($cluster in $Clusters)
+	{
+		$cpustat = $cluster | Get-Stat -Stat cpu.usagemhz.average -Start $yesterdayStart -Finish $todayStart -IntervalMins 15 | where{ $_.Instance -eq "" }
+		$cpuuse = ( $cpustat | Measure-Object -Property Value -Maximum -Minimum -Average )
+
+		$memstat = $cluster | Get-Stat -Stat mem.consumed.average -Start $yesterdayStart -Finish $todayStart -IntervalMins 15 | where{ $_.Instance -eq "" }
+		$memuse = ( $memstat | Measure-Object -Property Value -Maximum -Minimum -Average )
+
+		$maxvcpu = '{0:N0}' -f (($cluster | Get-VMHost | Measure-Object -Property NumCpu -Sum | Select Sum).Sum)
+		$usedvcpu = '{0:N0}' -f (($cluster | get-vm | Measure-Object -Property NumCpu -Sum | Select Sum).Sum)
+
+		New-Object PSObject -Property @{
+			clusterName = $cluster.Name
+			usedMhzAvg = [Math]::Round($cpuuse.Average,2)
+			usedMhzMax = [Math]::Round($cpuuse.Maximum,2)
+			usedMhzMin = [Math]::Round($cpuuse.Minimum,2)
+			percentUsedMhz = '{0:N2}' -f (($cluster | Get-VMHost | Measure-Object -Property CpuUsageMhz -Sum | Select Sum).Sum / $cluster.UsableCpuMhz * 100)
+			usedMemAvg = [Math]::Round($memuse.Average * 1KB / 1GB,2) #Little funky math because we are given value in KB not B
+			usedMemMax = [Math]::Round($memuse.Maximum * 1KB / 1GB,2) #Little funky math because we are given value in KB not B
+			usedMemMin = [Math]::Round($memuse.Minimum * 1KB / 1GB,2) #Little funky math because we are given value in KB not B
+			maxMhz = $cluster.UsableCpuMhz
+			maxMem = $cluster.UsableRamGb
+			maxVcpus = $maxvcpu
+			usedVcpu = $usedvcpu
+			availVcpu = $maxvcpu - $usedvcpu
+		}
+	}
+
+    return $retObj
+}
+
+#region "PowerCLI Settings"
+Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -DefaultVIServerMode Multiple -DisplayDeprecationWarnings $true -Scope Session -Confirm:$false
+#endregion
+
+#region "Custom VIProperty Definitions"
+New-VIProperty -Name PercentFree -ObjectType Datastore -Value {
+					param($datastore)
+
+					'{0:P0}' -f ($datastore.FreeSpaceMB/$datastore.CapacityMB)
+				} -Force
+
+New-VIProperty -Name PercentUsed -ObjectType Datastore -Value {
+					param($datastore)
+
+					'{0:P0}' -f (1-($datastore.FreeSpaceMB/$datastore.CapacityMB))
+				} -Force
+
+New-VIProperty -Name ProvisionedVMStorageGB -ObjectType Datastore -Value {
+					param($datastore)
+
+					'{0:N2}' -f ((get-vm -Datastore $datastore).ProvisionedSpaceGB | Measure-Object -Sum).Sum
+				}
+
+New-VIProperty -Name UsedStorageGB -ObjectType Datastore -Value {
+                param($datastore)
+
+                [math]::Round($datastore.CapacityGB - $datastore.FreeSpaceGB,2)
+}
+
+New-VIProperty -Name OverCommitPercent -ObjectType Datastore -Value {
+                    param($datastore)
+
+                    '{0:P0}' -f ($datastore.ProvisionedVMStorageGB / $datastore.CapacityGB)
+                }
+
+New-VIProperty -Name OverCommitRatio -ObjectType Datastore -Value {
+                    param($datastore)
+
+                   '{0:N2}' -f ($datastore.ProvisionedVMStorageGB / $datastore.CapacityGB)
+                }
+
+New-VIProperty -Name RemoteHost -ObjectType Datastore -Value {
+					param($datastore)
+
+					$datastore.ExtensionData.Info.Nas.RemoteHost
+				} -Force
+
+New-VIProperty -Name vCenter -ObjectType VirtualMachine -Value {
+					param($vm)
+
+					return ((($vm.Uid.Split("/")[1] -split("="))[1] -split("@"))[1] -split(":"))[0]
+	} -Force
+
+New-VIProperty -Name vCenter -ObjectType VMHost -Value {
+					param($vmHost)
+
+					return ((($vmHost.Uid.Split("/")[1] -split("="))[1] -split("@"))[1] -split(":"))[0]
+	} -Force
+
+New-VIProperty -Name vCenter -ObjectType DataCenter -Value {
+					param($dataCenter)
+
+					return ((($dataCenter.Uid.Split("/")[1] -split("="))[1] -split("@"))[1] -split(":"))[0]
+	} -Force
+
+New-VIProperty -Name vCenter -ObjectType Datastore -Value {
+					param($datastore)
+
+					return ((($datastore.Uid.Split("/")[1] -split("="))[1] -split("@"))[1] -split(":"))[0]
+	} -Force
+
+New-VIProperty -Name SanLunId -ObjectType Datastore -Value {
+					param([VMware.VimAutomation.ViCore.Impl.V1.DatastoreManagement.DatastoreImpl]$datastore)
+
+					[string]$lunID = ""
+
+					if(($datastore.Type -eq "VMFS") -and ($datastore.Name -notmatch "vmfsvol1"))
+					{
+						$lunID = $datastore.ExtensionData.Info.Vmfs.Extent.DiskName.Substring($datastore.ExtensionData.Info.Vmfs.Extent.DiskName.Length - 4)
+					}
+
+					return $lunID
+				} -Force | Out-Null
+
+New-VIProperty -Name IOPSRead -ObjectType VirtualMachine -Value {
+					param($vm)
+
+					[math]::round((Get-Stat $vm -stat "datastore.numberReadAveraged.average" -RealTime | Select -Expand Value | measure -average).Average, 1)
+				} -Force
+
+New-VIProperty -Name IOPSWrite -ObjectType VirtualMachine -Value {
+					param($vm)
+
+					[math]::round((Get-Stat $vm -stat "datastore.numberWriteAveraged.average" -RealTime | Select -Expand Value | measure -average).Average, 1)
+				} -Force
+
+New-VIProperty -Name ProvisionedStorageGB -ObjectType VirtualMachine -Value {
+					param($vm)
+
+					'{0:N2}' -f $([Math]::Round($vm.ProvisionedSpaceGB, 2))
+				} -Force
+
+New-VIProperty -Name UsedStorageGB -ObjectType VirtualMachine -Value {
+					param($vm)
+
+					#'{0:N2}' -f $([Math]::Round($vm.UsedSpaceGB, 2))
+					'{0:N2}' -f [math]::round((($vm.Guest.Disks | measure -Property capacitygb -Sum).Sum - ($vm.Guest.Disks | measure -Property freespacegb -Sum).Sum),2)
+
+				} -Force
+
+New-VIProperty -Name MACAddress -ObjectType VirtualMachine -Value {
+					param($vm)
+
+					(Get-NetworkAdapter (Get-vm $vm) | Select-Object MacAddress).MacAddress
+				} -Force
+
+New-VIProperty -Name Cluster -ObjectType VirtualMachine -Value {
+					param($vm)
+
+					($vm | Select-Object -ExpandProperty VMHost | Select-Object Parent).Parent
+				} -Force
+
+New-VIProperty -Name lunID -ObjectType ScsiLun -Value {
+					param([VMware.VimAutomation.ViCore.Impl.V1.Host.Storage.Scsi.ScsiLunImpl]$lun)
+
+					[int](Select-String ":L(?<lunID>\d+)$" -InputObject $lun.RuntimeName).Matches[0].Groups['lunID'].Value
+				} -Force | Out-Null
+
+New-VIProperty -Name PercentUsedRAM -ObjectType VMHost -Value {
+				param($vmhost)
+
+				'{0:P0}' -f ($vmhost.MemoryUsageMB / $vmhost.MemoryTotalMB)
+			} -Force
+
+New-VIProperty -Name TotalRamGb -ObjectType Cluster -Value {
+					param($cluster)
+
+					[int](($cluster | Get-VMHost | Measure-Object -Property MemoryTotalGB -Sum | Select Sum).Sum)
+				} -Force
+
+New-VIProperty -Name UsableRamGb -ObjectType Cluster -Value {
+					param($cluster)
+
+					#This is as follows
+					#(({AllHostsInClusterRAM - LargestHostInClusterRAM) * {MaxClusterUsage}) - ({HostRAMBuffer} * {CountOfHosts})
+					$clusterHosts = $cluster | Get-VMHost
+					[Math]::Round(((($clusterHosts | Measure-Object -Property MemoryTotalGB -Sum).Sum - ($clusterHosts | Sort -Descending -Property MemoryTotalGB | Select -First 1 | Select MemoryTotalGB).MemoryTotalGB) * .9) - ($clusterHosts.Count * 3),2)
+				} -Force
+
+New-VIProperty -Name TotalCpuMhz -ObjectType Cluster -Value {
+					param($cluster)
+
+					[int](($cluster | Get-VMHost | Measure-Object -Property CpuTotalMhz -Sum | Select Sum).Sum)
+				} -Force
+
+New-VIProperty -Name UsableCpuMhz -ObjectType Cluster -Value {
+					param($cluster)
+
+					[int](($cluster | Get-VMHost | Measure-Object -Property CpuTotalMhz -Sum | Select Sum).Sum - ($cluster | Get-VMHost | Sort -Descending -Property CpuTotalMhz | Select -First 1 | Select CpuTotalMhz).CpuTotalMhz)
+				} -Force
+
+New-VIProperty -Name PercentUsedCPU -ObjectType VMHost -Value {
+					param($vmhost)
+
+					'{0:P0}' -f ($vmhost.CpuUsageMhz / $vmhost.CpuTotalMhz)
+				} -Force
+
+New-VIProperty -Name UsedCpuMhz -ObjectType Cluster -Value {
+                    param($cluster)
+
+                    [int]($cluster | Get-VMHost | Measure-Object -Property CpuUsageMhz -Sum | Select Sum).Sum
+                } -Force
+
+New-VIProperty -Name PercentUsedCPU -ObjectType Cluster -Value {
+					param($cluster)
+
+					'{0:P0}' -f (($cluster | Get-VMHost | Measure-Object -Property CpuUsageMhz -Sum | Select Sum).Sum / $cluster.UsableCpuMhz)
+				} -Force
+
+New-VIProperty -Name ProvisionedRamGb -ObjectType Cluster -Value {
+					param($cluster)
+
+					[int](($cluster | Get-VM | Where {$_.PowerState -eq "PoweredOn"} | measure -Property MemoryGB -Sum).Sum)
+				} -Force -WarningAction SilentlyContinue
+
+New-VIProperty -Name ActualUsageRamGb -ObjectType Cluster -Value {
+					param($cluster)
+
+					[int](($cluster | Get-VMHost | Measure-Object -Property MemoryUsageGB -Sum | Select Sum).Sum)
+				} -Force
+
+New-VIProperty -Name UsableRemainingRamPercent -ObjectType Cluster -Value {
+					param($cluster)
+
+					'{0:P0}' -f ($cluster.RemainingUsableRAMGB / $cluster.UsableRAMGB)
+				} -Force
+
+New-VIProperty -Name RAMOverCommitRatio -Object Cluster -Value {
+                    param($cluster)
+
+                    '{0:N2}' -f ($cluster.ProvisionedRamGb / $cluster.UsableRamGb)
+                }
+
+New-VIProperty -Name RemainingUsableRamGb -ObjectType Cluster -Value {
+					param($cluster)
+
+                    $usableGB = ($cluster.UsableRAMGB - $cluster.ProvisionedRAMGB)
+                    if($usableGB -le 0)
+                    {
+					    [Math]::Floor($usableGB)
+                    }
+                    else
+                    {
+                        [Math]::Ceiling($usableGB)
+                    }
+				} -Force
+
+New-VIProperty -Name DatastoreList -ObjectType VirtualMachine -Value {
+					param($VirtualMachine)
+
+					($VirtualMachine.ExtensionData.Config.DatastoreUrl | Where {$_.Name -NotMatch "nfsdsswp" -and $_.Name -NotMatch "swap" -and $_.Name -notmatch "guestOsMedia" -and $_.name -notmatch "nfsvolswp"} | Select Name).Name
+				} -ErrorAction SilentlyContinue -Verbose:$false -WarningAction SilentlyContinue
+
+New-VIProperty -ObjectType VMHost -Name AvgRAMUsage24Hr -Value {
+                    param($vmHost)
+
+                    "{0:p2}" -f (($vmHost | Get-Stat -Stat mem.usage.average -Start (Get-Date).AddDays(-1) | Measure-Object -Property Value -Average).Average/100)
+                } -Force
+
+New-VIProperty -ObjectType Cluster -Name NumPoweredOnVMs -Value {
+                    param($cluster)
+
+                    ($cluster | get-vm | Where {$_.PowerState -eq "PoweredOn"} | Measure-Object).Count
+                } -Force -WarningAction SilentlyContinue
+
+New-VIProperty -ObjectType VMHost -Name NumPoweredOnVMs -Value {
+                    param($vmhost)
+
+                    ($vmhost | get-vm | Where {$_.PowerState -eq "PoweredOn"} | Measure-Object).Count
+                } -Force -WarningAction SilentlyContinue
+
+New-VIProperty -ObjectType VIServer -Name NumPoweredOnVms -Value {
+                    param($viServer)
+
+                    (get-vm -Server $viServer | Where {$_.PowerState -eq "PoweredOn"} | Measure-Object).Count
+                } -Force -WarningAction SilentlyContinue
+
+New-VIProperty -ObjectType VMHost -Name SerialNumber -Value {
+					param($viServer)
+
+					(Get-EsxCli -VMHost $viServer).hardware.platform.get().SerialNumber
+				 } -Force -WarningAction SilentlyContinue
+#endregion
+
+#region "Custom Alias definitions"
+New-Alias -Name RTFM -Value Get-Help -Description 'Read The Fabulous Manual'
+New-Alias -Name Disconnect-vCenter -Value Disconnect-VIServer -Description 'Wrapper for Disconnect-VIServer so we have consistency'
+#endregion
+
+#region "Exports"
+Export-ModuleMember -Alias Disconnect-vCenter
+Export-ModuleMember -Alias RTFM
+Export-ModuleMember -Function Get-ConsoleAsText
+Export-ModuleMember -Function Get-ConnectedvCenters
+Export-ModuleMember -Function Get-GuestCredentials
+Export-ModuleMember -Function Move-OldFile
+Export-ModuleMember -Function Get-vCenterSessions
+Export-ModuleMember -Function Wait-VMShutdown
+Export-ModuleMember -Function Connect-vCenter
+Export-ModuleMember -Function Get-VMCPUReadyPercentVM
+Export-ModuleMember -Function Get-VMCPUReadyPercentDatacenter
+Export-ModuleMember -Function Get-LastPowerOn
+Export-ModuleMember -Function Watch-Command
+Export-ModuleMember -Function Start-RollingReboot
+Export-ModuleMember -Function Connect-ESXiHost
+Export-ModuleMember -Function Get-RecentConnections
+Export-ModuleMember -Function Get-NfsDataStores
+Export-ModuleMember -Function Get-VMXPath
+Export-ModuleMember -Function Reset-Modules
+Export-ModuleMember -Function Get-ConsolidationRatio
+Export-ModuleMember -Function Get-VMCreationDates
+Export-ModuleMember -Function Get-AllvCenters
+Export-ModuleMember -Function Get-VersionStringAsArray
+Export-ModuleMember -Function Get-VMLastPowerTimes
+Export-ModuleMember -Function Set-Sandbox
+Export-ModuleMember -Function Test-IsEven
+Export-ModuleMember -Function Get-HostRAMUsage
+Export-ModuleMember -Function Get-CapacityPlanningData
+Export-modulemember -Function Get-VMPerfStat
+Export-ModuleMember -Function Get-VMHostPerfStat
+Export-ModuleMember -Function Get-VersionStringAsObject
+#endregion
