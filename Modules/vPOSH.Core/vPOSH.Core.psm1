@@ -6,6 +6,279 @@
 #>
 $global:vCenterCredentials = ''
 $global:VMGuestCredentials = ''
+function Initialize-Config
+{
+    $global:vCenterObjects = [PSCustomObject[]](Get-Content ./.config/vcenters.json | ConvertFrom-JSON)
+}
+
+Initialize-Config
+
+#TODO: Completly refactor this function
+Function Connect-vCenter
+{
+    <#
+	.SYNOPSIS
+		[PowerCLI]Wrapper for Connect-VIServer
+	.DESCRIPTION
+		This is a wrapper for Connect-VIServer that allows for a stored session credential and checks for existing connections.
+		Also, you can pass a credential object into the command to allow for externally stored credentials to be used.
+	.EXAMPLE
+		Connect-vCenter -vCenters myvcenter.mydomain.com
+	.EXAMPLE
+		Connect-vCenter -vCenters myvcenter.mydomain.com -CredentialObject $credObject
+	.PARAMETER vCenters
+		Which vCenter(s) to connect to
+    .PARAMETER vCenter
+		Which vCenter to connect to
+	.PARAMETER CredentialObject
+		Credential object to use if you already have one
+	.PARAMETER ClearPreviousCreds
+		Clear out any previous credentials?
+	.PARAMETER UseSSPI
+		Use current users credentials
+	.PARAMETER Menu
+		Indicate that you want to select a connection server from a list of recently connected servers.
+	.PARAMETER SSHNoDomain
+		Creates a new SSHCredential object that strips the domain name (in format {domain}\{username}), by default this is done.
+	#>
+    [CmdletBinding(DefaultParameterSetName = 'base')]
+    param
+    (
+        [Parameter(Mandatory = $true,
+            HelpMessage = 'Which vCenter(s) to connect to',
+            ParameterSetName = 'base',
+            Position = 0)]
+        [alias("vCenter")]
+        [string[]]$vCenters,
+
+        [Parameter(Mandatory = $false,
+            HelpMessage = 'Credential object to use',
+            ParameterSetName = 'base')]
+        [Parameter(ParameterSetName = 'menu')]
+        $CredentialObject = '',
+
+        [Parameter(mandatory = $false,
+            HelpMessage = 'Clear out any previous credentials?',
+            ParameterSetName = 'base')]
+        [Parameter(ParameterSetName = 'menu')]
+        [Parameter(ParameterSetName = 'all')]
+        [switch]$ClearPreviousCreds = $false,
+
+        [Parameter(mandatory = $false,
+            HelpMessage = 'Use current users credentials',
+            ParameterSetName = 'base')]
+        [Parameter(ParameterSetName = 'menu')]
+        [Parameter(ParameterSetName = 'all')]
+        [Parameter(ParameterSetName = 'sspi')]
+        [switch]$UseSSPI = $false,
+
+        [Parameter(mandatory = $true,
+            HelpMessage = 'Indicate that you want to select a connection server from a list of recently connected servers.',
+            ParameterSetName = 'menu')]
+        [switch]$Menu = $false,
+
+        [Parameter(mandatory = $true,
+            HelpMessage = 'Indicate that you want to connect to all vCenters.',
+            ParameterSetName = 'all')]
+        [switch]$All = $false,
+
+        [Parameter(mandatory = $false,
+            HelpMessage = "Strip domain from SSH Credentials",
+            ParameterSetName = 'base')]
+        [Parameter(ParameterSetName = 'all')]
+        [Parameter(ParameterSetName = 'menu')]
+        [Parameter(ParameterSetName = 'sspi')]
+        [switch]$SSHNoDomain = $true
+    )
+
+    DynamicParam
+    {
+        # Define the dictionary object
+        $RuntimeParameterDictionary = New-Object System.Management.Automation.RuntimeDefinedParameterDictionary
+		
+		# Set the first parameter
+		## Set the dynamic parameters' name
+        $ParamName_Location = 'Location'
+        ## Create the collection of attributes
+        $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
+        ## Create and set the parameters' attributes
+        $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
+		$ParameterAttribute.Mandatory = $true
+		$ParameterAttribute.ParameterSetName = 'Location'
+		$ParameterAttribute.HelpMessage = 'Location to filter vCenters by as defined in the vcenters.json file'
+        ## Add the attributes to the attributes collection
+        $AttributeCollection.Add($ParameterAttribute) 
+        ## Generate and set the ValidateSet 
+        $arrSet = @(($global:vCenterObjects | Select -Unique Location).Location)
+        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)    
+        ## Add the ValidateSet to the attributes collection
+        $AttributeCollection.Add($ValidateSetAttribute)
+        ## Create and return the dynamic parameter
+        $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($ParamName_Location, [string], $AttributeCollection)
+        $RuntimeParameterDictionary.Add($ParamName_Location, $RuntimeParameter)
+        # End of first parameter
+
+		# Set the first parameter
+		## Set the dynamic parameters' name
+        $ParamName_Environment = 'Environment'
+        ## Create the collection of attributes
+        $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
+        ## Create and set the parameters' attributes
+        $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
+		$ParameterAttribute.Mandatory = $true
+		$ParameterAttribute.ParameterSetName = 'Environment'
+		$ParameterAttribute.HelpMessage = 'Environment to filter vCenters by as defined in the vcenters.json file'
+        ## Add the attributes to the attributes collection
+        $AttributeCollection.Add($ParameterAttribute) 
+        ## Generate and set the ValidateSet 
+        $arrSet = @(($global:vCenterObjects | Select -Unique Environment).Environment)
+        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)    
+        ## Add the ValidateSet to the attributes collection
+        $AttributeCollection.Add($ValidateSetAttribute)
+        ## Create and return the dynamic parameter
+        $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($ParamName_Environment, [string], $AttributeCollection)
+        $RuntimeParameterDictionary.Add($ParamName_Environment, $RuntimeParameter)
+		# End of second parameter
+		
+        # Return the entire set
+        return $RuntimeParameterDictionary
+    }
+
+    begin { }
+    process
+    {
+		$Location = $PSBoundParameters[$ParamName_Location]
+		$Environment = $PSBoundParameters[$ParamName_Environment]
+
+        if ($Menu)
+        {
+            Clear-Host
+            [int]$i = 1
+            #$recentConnections = Get-RecentConnections
+            if ($ClearPreviousCreds)
+            {
+                Write-Verbose "Clearing previous credentials"
+                $recentConnections = Get-vCentersFromDashboard
+            }
+            elseif ($CredentialObject)
+            {
+                $recentConnections = Get-vCentersFromDashboard
+            }
+            elseif ($UseSSPI)
+            {
+                Write-Verbose "Using SSPI style conenction"
+                $recentConnections = Get-vCentersFromDashboard
+            }
+            else
+            {
+                $recentConnections = Get-vCentersFromDashboard
+            }
+
+            Write-Host "Items in " -NoNewline -ForegroundColor Yellow
+            Write-Host "Green " -NoNewline -ForegroundColor Green
+            Write-Host "are able to be contacted and selected.  Items in " -NoNewline -ForegroundColor Yellow
+            Write-Host "Red " -NoNewline -ForegroundColor Red
+            Write-Host "failed a ping check." -ForegroundColor Yellow
+            Write-Host
+
+            foreach ($entry in $recentConnections)
+            {
+                if ($entry.Length -gt 0)
+                {
+                    if (!(Test-Connection -ComputerName $entry -Count 1 -Quiet))
+                    {
+                        Write-Host "$i - $($entry)" -ForegroundColor Red
+                    }
+                    else
+                    {
+                        Write-Host "$i - $($entry)" -ForegroundColor Green
+                    }
+
+                    $i++
+                }
+            }
+            [int]$menuChoice = Read-Host 'Please make a selection'
+
+            $vCenters = $($recentConnections[$menuChoice - 1])
+        }
+
+        if ($All)
+        {
+            if ($UseSSPI)
+            {
+                Write-Verbose "Using SSPI style connection"
+                $vCenters = Get-vCentersFromDashboard
+            }
+            else
+            {
+                $vCenters = Get-vCentersFromDashboard
+            }
+        }
+
+        if ($Location)
+        {
+            $vCenters = @(($global:vCenterObjects | Where Location -match $Location).vCenter)
+		}
+		
+		if($Environment)
+		{
+			$vCenters = @(($global:vCenterObjects | Where Environment -match $Environment).vCenter)
+		}
+		
+        Write-Verbose "$vCenters"
+
+        foreach ($vCenter in $vCenters)
+        {
+            if ($vCenter.Length -gt 0)
+            {
+                if ($UseSSPI)
+                {
+                    Connect-VIServer -Server $vCenter -ErrorAction Stop
+                }
+                else
+                {
+                    if ($ClearPreviousCreds)
+                    {
+                        $global:vCenterCredentials = $Host.UI.PromptForCredential("Domain Credentials for vCenter", 'Enter your domain account used to access this vCenter', '', '')
+                        $global:DefaultVIServers = $null
+                    }
+
+                    if ($CredentialObject)
+                    {
+                        $global:vCenterCredentials = $CredentialObject
+                    }
+                    else
+                    {
+                        if (!$global:vCenterCredentials)
+                        {
+                            $global:vCenterCredentials = $Host.UI.PromptForCredential("Domain Credentials for vCenter", 'Enter your domain account used to access this vCenter', '', '')
+                        }
+                    }
+                    if ($global:DefaultVIServers -notcontains $vCenter)
+                    {
+                        if (Test-Connection -ComputerName $vCenter -Count 1 -Quiet)
+                        {
+                            Connect-VIServer -Server $vCenter -Credential $global:vCenterCredentials -ErrorAction SilentlyContinue | Out-Null
+                            if ($?)
+                            {
+                                Write-Host "Connected to $($vCenter)" -ForegroundColor Green
+                            }
+                            else
+                            {
+                                Write-Host "Could not connect to $($vCenter)" -ForegroundColor Red
+                            }
+                        }
+                        else
+                        {
+                            Write-Host "Could not connect to $($vCenter)" -ForegroundColor Red
+                        }
+                    }
+                }
+            }
+        }
+    }
+    end { }
+}
 
 #TODO: Check this function before release
 function Get-VMLastPowerTimes
@@ -261,201 +534,7 @@ function Get-RecentConnections
 	return ($recentConnectionsFile.ServerList.Server | Where-Object {$_.($recentConnectionsFile.ServerList.CurrentMonth) -gt 0} | Select-Object Name)
 }
 
-#TODO: Completly refactor this function
-Function Connect-vCenter
-{
-	<#
-	.SYNOPSIS
-		[PowerCLI]Wrapper for Connect-VIServer
-	.DESCRIPTION
-		This is a wrapper for Connect-VIServer that allows for a stored session credential and checks for existing connections.
-		Also, you can pass a credential object into the command to allow for externally stored credentials to be used.
-	.EXAMPLE
-		Connect-vCenter -vCenters myvcenter.mydomain.com
-	.EXAMPLE
-		Connect-vCenter -vCenters myvcenter.mydomain.com -CredentialObject $credObject
-	.PARAMETER vCenters
-		Which vCenter(s) to connect to
-    .PARAMETER vCenter
-		Which vCenter to connect to
-	.PARAMETER CredentialObject
-		Credential object to use if you already have one
-	.PARAMETER ClearPreviousCreds
-		Clear out any previous credentials?
-	.PARAMETER UseSSPI
-		Use current users credentials
-	.PARAMETER Menu
-		Indicate that you want to select a connection server from a list of recently connected servers.
-	.PARAMETER SSHNoDomain
-		Creates a new SSHCredential object that strips the domain name (in format {domain}\{username}), by default this is done.
-	#>
-	[CmdletBinding(DefaultParameterSetName='base')]
-	param
-	(
-		[Parameter(Mandatory=$true,
-		HelpMessage='Which vCenter(s) to connect to',
-		ParameterSetName='base',
-		Position=0)]
-        [alias("vCenter")]
-		[string[]]$vCenters,
 
-		[Parameter(Mandatory=$false,
-		HelpMessage='Credential object to use',
-		ParameterSetName='base')]
-		[Parameter(ParameterSetName='menu')]
-		$CredentialObject='',
-
-		[Parameter(mandatory=$false,
-		HelpMessage='Clear out any previous credentials?',
-		ParameterSetName='base')]
-		[Parameter(ParameterSetName='menu')]
-		[Parameter(ParameterSetName='all')]
-		[switch]$ClearPreviousCreds=$false,
-
-		[Parameter(mandatory=$false,
-		HelpMessage='Use current users credentials',
-		ParameterSetName='base')]
-		[Parameter(ParameterSetName='menu')]
-		[Parameter(ParameterSetName='all')]
-		[Parameter(ParameterSetName='sspi')]
-		[switch]$UseSSPI=$false,
-
-		[Parameter(mandatory=$true,
-		HelpMessage='Indicate that you want to select a connection server from a list of recently connected servers.',
-		ParameterSetName='menu')]
-		[switch]$Menu=$false,
-
-		[Parameter(mandatory=$true,
-		HelpMessage='Indicate that you want to connect to all vCenters.',
-		ParameterSetName='all')]
-		[switch]$All=$false,
-
-		[Parameter(mandatory=$false,
-		HelpMessage="Strip domain from SSH Credentials",
-		ParameterSetName='base')]
-		[Parameter(ParameterSetName='all')]
-		[Parameter(ParameterSetName='menu')]
-		[Parameter(ParameterSetName='sspi')]
-		[switch]$SSHNoDomain=$true
-	)
-
-	if($Menu)
-	{
-		Clear-Host
-		[int]$i=1
-		#$recentConnections = Get-RecentConnections
-		if($ClearPreviousCreds)
-		{
-            Write-Verbose "Clearing previous credentials"
-			$recentConnections = Get-vCentersFromDashboard
-		}
-		elseif($CredentialObject)
-		{
-			$recentConnections = Get-vCentersFromDashboard
-		}
-        elseif($UseSSPI)
-        {
-            Write-Verbose "Using SSPI style conenction"
-            $recentConnections = Get-vCentersFromDashboard
-        }
-		else
-		{
-			$recentConnections = Get-vCentersFromDashboard
-		}
-
-		Write-Host "Items in " -NoNewline -ForegroundColor Yellow
-		Write-Host "Green " -NoNewline -ForegroundColor Green
-		Write-Host "are able to be contacted and selected.  Items in " -NoNewline -ForegroundColor Yellow
-		Write-Host "Red " -NoNewline -ForegroundColor Red
-		Write-Host "failed a ping check." -ForegroundColor Yellow
-		Write-Host
-
-		foreach($entry in $recentConnections)
-		{
-			if($entry.Length -gt 0)
-			{
-				if(!(Test-Connection -ComputerName $entry -Count 1 -Quiet))
-				{
-					Write-Host "$i - $($entry)" -ForegroundColor Red
-				}
-				else
-				{
-					Write-Host "$i - $($entry)" -ForegroundColor Green
-				}
-
-				$i++
-			}
-		}
-		[int]$menuChoice = Read-Host 'Please make a selection'
-
-		$vCenters = $($recentConnections[$menuChoice - 1])
-	}
-
-	if($All)
-	{
-        if($UseSSPI)
-        {
-            Write-Verbose "Using SSPI style connection"
-            $vCenters = Get-vCentersFromDashboard
-        }
-        else
-        {
-		    $vCenters = Get-vCentersFromDashboard
-        }
-	}
-
-	Write-Verbose "$vCenters"
-
-	foreach($vCenter in $vCenters)
-	{
-		if($vCenter.Length -gt 0)
-		{
-			if($UseSSPI)
-			{
-				Connect-VIServer -Server $vCenter -ErrorAction Stop
-			}
-			else
-			{
-				if($ClearPreviousCreds)
-				{
-					$global:vCenterCredentials=$Host.UI.PromptForCredential("Domain Credentials for vCenter",'Enter your domain account used to access this vCenter','','')
-					$global:DefaultVIServers=$null
-				}
-
-				if($CredentialObject)
-				{
-					$global:vCenterCredentials=$CredentialObject
-				}
-				else
-				{
-					if(!$global:vCenterCredentials)
-					{
-						$global:vCenterCredentials=$Host.UI.PromptForCredential("Domain Credentials for vCenter",'Enter your domain account used to access this vCenter','','')
-					}
-				}
-				if($global:DefaultVIServers -notcontains $vCenter)
-				{
-					if(Test-Connection -ComputerName $vCenter -Count 1 -Quiet)
-					{
-						Connect-VIServer -Server $vCenter -Credential $global:vCenterCredentials -ErrorAction SilentlyContinue | Out-Null
-						if($?)
-						{
-							Write-Host "Connected to $($vCenter)" -ForegroundColor Green
-						}
-						else
-						{
-							Write-Host "Could not connect to $($vCenter)" -ForegroundColor Red
-						}
-					}
-					else
-					{
-						Write-Host "Could not connect to $($vCenter)" -ForegroundColor Red
-					}
-				}
-			}
-		}
-	}
-}
 
 #TODO: Check this function before release
 Function Get-VMCPUReadyPercentDatacenter
@@ -1107,91 +1186,6 @@ function Get-ConnectedvCenters
 	return $vCenterData
 }
 
-#TODO: Completly refactor this function before release
-function Get-AllvCenters
-{
-	<#
-	.Synopsis
-	   	[PowerCLI]Retrieves the list of vCenter servers from the vcenters file on ldxinfraweb1
-	.DESCRIPTION
-	   	Retrieves the list of vCenter servers from the vcenters file on ldxinfraweb1
-	.PARAMETER CredentialObject
-		Credential object to use
-	.PARAMETER ClearPreviousCreds
-		Switch to clear out any previous credentials?
-	.PARAMETER SSHNoDomain
-		Creates a new SSHCredential object that strips the domain name (in format {domain}\{username}), by default this is not done.
-	.EXAMPLE
-		Get-AllvCenters
-	   	Get-AllvCenters -ClearPreviousCreds
-	#>
-    [CmdletBinding()]
-	param
-	(
-		[Parameter(Mandatory=$false,
-		HelpMessage='Credential object to use')]
-		$CredentialObject='',
-
-		[Parameter(mandatory=$false,
-		HelpMessage='Clear out any previous credentials?')]
-		[switch]$ClearPreviousCreds=$false,
-
-		[Parameter(mandatory=$false,
-		HelpMessage="Strip domain from SSH Credentials")]
-		[switch]$SSHNoDomain=$false
-
-#        [Parameter(Mandatory=$false,
-#        HelpMessage='Use current Credentials')]
-#        [switch]$UseCurrentCreds=$false
-	)
-	if($ClearPreviousCreds)
-	{
-		$global:vCenterCredentials=$Host.UI.PromptForCredential("Domain Credentials for vCenter",'Enter your domain account used to access this vCenter','','')
-		$global:DefaultVIServers=$null
-	}
-	elseif($CredentialObject)
-	{
-		$global:vCenterCredentials=$CredentialObject
-	}
-	elseif(!$vCenterCredentials -and !$UseCurrentCreds)
-	{
-		$global:vCenterCredentials=$Host.UI.PromptForCredential("Domain Credentials",'Enter your domain Admin account','','')
-	}
-
-#    if($UseCurrentCreds)
-#    {
-#        $vCenters = Get-Content \\ldxinfraweb1.dx.deere.com\public\vcservers
-#        Write-Verbose "$vCenters"
-#    }
-#    else
-#    {
-
-	if($SSHNoDomain)
-	{
-		$global:SSHCredentials = New-Object System.Management.Automation.PSCredential("\$($vCenterCredentials.UserName.Split("\")[1])",$vCenterCredentials.Password)
-	}
-	else
-	{
-		$global:SSHCredentials = $vCenterCredentials
-	}
-
-	$ldxinfraweb1_session = New-SSHSession -ComputerName ldxinfraweb1.dx.deere.com -Credential $SSHCredentials -AcceptKey:$true
-
-    $results = $ldxinfraweb1_session | Invoke-SSHCommand -Command "cat /opt/vmwareutils/vcservers"
-
-	Remove-SSHSession -Index $ldxinfraweb1_session.Index -ErrorAction SilentlyContinue
-
-    $vCenters = foreach($item in ($results.Output -split "`n"))
-    {
-	    New-Object PSObject -Property @{
-		    vCenter = $item
-	    }
-    }
-#    }
-
-	return $vCenters
-}
-
 #TODO: Check this function before release
 function Get-Lsh
 {
@@ -1767,38 +1761,4 @@ New-VIProperty -ObjectType VMHost -Name SerialNumber -Value {
 #region "Custom Alias definitions"
 New-Alias -Name RTFM -Value Get-Help -Description 'Read The Fabulous Manual'
 New-Alias -Name Disconnect-vCenter -Value Disconnect-VIServer -Description 'Wrapper for Disconnect-VIServer so we have consistency'
-#endregion
-
-#region "Exports"
-Export-ModuleMember -Alias Disconnect-vCenter
-Export-ModuleMember -Alias RTFM
-Export-ModuleMember -Function Get-ConsoleAsText
-Export-ModuleMember -Function Get-ConnectedvCenters
-Export-ModuleMember -Function Get-GuestCredentials
-Export-ModuleMember -Function Move-OldFile
-Export-ModuleMember -Function Get-vCenterSessions
-Export-ModuleMember -Function Wait-VMShutdown
-Export-ModuleMember -Function Connect-vCenter
-Export-ModuleMember -Function Get-VMCPUReadyPercentVM
-Export-ModuleMember -Function Get-VMCPUReadyPercentDatacenter
-Export-ModuleMember -Function Get-LastPowerOn
-Export-ModuleMember -Function Watch-Command
-Export-ModuleMember -Function Start-RollingReboot
-Export-ModuleMember -Function Connect-ESXiHost
-Export-ModuleMember -Function Get-RecentConnections
-Export-ModuleMember -Function Get-NfsDataStores
-Export-ModuleMember -Function Get-VMXPath
-Export-ModuleMember -Function Reset-Modules
-Export-ModuleMember -Function Get-ConsolidationRatio
-Export-ModuleMember -Function Get-VMCreationDates
-Export-ModuleMember -Function Get-AllvCenters
-Export-ModuleMember -Function Get-VersionStringAsArray
-Export-ModuleMember -Function Get-VMLastPowerTimes
-Export-ModuleMember -Function Set-Sandbox
-Export-ModuleMember -Function Test-IsEven
-Export-ModuleMember -Function Get-HostRAMUsage
-Export-ModuleMember -Function Get-CapacityPlanningData
-Export-modulemember -Function Get-VMPerfStat
-Export-ModuleMember -Function Get-VMHostPerfStat
-Export-ModuleMember -Function Get-VersionStringAsObject
 #endregion
