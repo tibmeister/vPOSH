@@ -805,9 +805,6 @@ Function Wait-VMShutdown
 		Name of VM Object to watch
 	.PARAMETER WaitSeconds
 		Number of seconds before performing a hard kill, defaults to 360 (5 min)
-	.NOTES
-    	Author: Jody Whitlock
-    	Date:   April 1, 2014
 	#>
 	[CmdletBinding()]
 	param
@@ -878,9 +875,9 @@ Function Get-vCenterSessions
         .DESCRIPTION
             Lists all connected vCenter Sessions, and some added properties such as idle time.
         .EXAMPLE
-            PS C:\> Get-vCenterSessions
+            Get-vCenterSessions
         .EXAMPLE
-            PS C:\> Get-vCenterSessions | Where { $_.IdleMinutes -gt 5 }
+            Get-vCenterSessions | Where { $_.IdleMinutes -gt 5 }
     #>
 
 	[CmdletBinding()]
@@ -975,10 +972,6 @@ function Get-ConsolidationRatio
     .EXAMPLE
 	    Get-consolidationRatio.ps1 -Datacenters "fdxvcr3"
         Get-consolidationRatio.ps1 -Datacenters "fdxvcr3","fsdevcr3"
-    .NOTES
-        Author: Jody Whitlock
-        Date:   January 8, 2014
-	    LastModified: May 9, 2014
     #>
 
     [CmdletBinding()]
@@ -1074,10 +1067,6 @@ function Get-ConsoleAsText
     .EXAMPLE
 	    $textFileName = "$env:temp\ConsoleBuffer.txt"
 		Get-ConsoleAsText | out-file $textFileName -encoding ascii
-    .NOTES
-        Author: Jody Whitlock
-        Date:   May 23, 2014
-	    LastModified: May 23, 2014
     #>
 
 	# Check the host name and exit if the host is not the Windows PowerShell console host.
@@ -1123,10 +1112,6 @@ function Get-VMXPath
     .EXAMPLE
 	    Get-VM myVM | Get-VMX
 		Get-Datacenter MyDC | Get-VM | %{Get-VMX $_}
-    .NOTES
-        Author: Jody Whitlock
-        Date:   June 26, 2014
-	    LastModified: June 26, 2014
     #>
 	[CmdletBinding()]
 	Param
@@ -1439,10 +1424,6 @@ function Get-CapacityPlanningData
             Cluster names
         .OUTPUTS
             Custom object
-        .NOTES
-            Author: Jody Whitlock
-            Date:   March 25, 2015
-	        LastModified: March 25, 2015
     #>
     [CmdletBinding()]
     param
