@@ -23,14 +23,12 @@ a **vcenters.json** file must be present in the _.config_ folder in order to all
 ]
 ```
 
-For _AutoConnect_, this is a true/false value and will be used to determine if the AutoConnect feature of the cmdlet is used.
+For **AutoConnect**, this is a true/false value and will be used to determine if the **AutoConnect** feature of the cmdlet is used.
 
 # Versioning
 
 Based on Semantec Versioning, the following will be used:
-*Major Version
-*Minor Version
-\*Patch
+*Major Version.Minor Version.Patch*
 
 Any new module will trigger a Minor version change, as will any new feature being added. Removing a feature or any other major changes that could break any existing code will trigger a Major version change. General commits to fix issues or enhance existing features will trigger a Patch increment.
 
