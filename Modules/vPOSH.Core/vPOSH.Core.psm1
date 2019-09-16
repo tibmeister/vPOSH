@@ -523,20 +523,6 @@ Function Connect-ESXiHost
 }
 
 #TODO: Check this function before release
-function Get-RecentConnections
-{
-	<#
-		.SYNOPSIS
-			[PowerCLI]Gets the list of most recent connections in the current month
-	#>
-
-	[xml]$recentConnectionsFile = Get-Content "$env:APPDATA\VMware\PowerCLI\RecentServerList.xml"
-	return ($recentConnectionsFile.ServerList.Server | Where-Object {$_.($recentConnectionsFile.ServerList.CurrentMonth) -gt 0} | Select-Object Name)
-}
-
-
-
-#TODO: Check this function before release
 Function Get-VMCPUReadyPercentDatacenter
 {
 	<#
