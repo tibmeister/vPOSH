@@ -23,7 +23,7 @@ a **vcenters.json** file must be present in the *.config* folder in order to all
 ]
 ```
 
-For **AutoConnect**, this is a true/false value and will be used to determine if the **AutoConnect** feature of the cmdlet is used.
+For **AutoConnect**, this is a true/false value and will be used to determine if the **AutoConnect** feature of the cmdlet is used.  This is slated for a future release
 
 # Versioning
 
