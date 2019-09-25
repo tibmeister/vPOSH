@@ -10,7 +10,7 @@ Powershell v5 or higher must be installed along with PowerCLI 10.2.0.9372002 or 
 
 # Installing / Getting Started
 
-a **vcenters.json** file must be present in the _.config_ folder in order to allow for a Connect-vCenter cmdlet to function correctly. the format of this file is as follows:
+a **vcenters.json** file must be present in the *.config* folder in order to allow for a Connect-vCenter cmdlet to function correctly. the format of this file is as follows:
 
 ```
 [

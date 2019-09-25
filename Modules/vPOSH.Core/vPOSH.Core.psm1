@@ -95,7 +95,7 @@ Function Connect-vCenter
     {
         # Define the dictionary object
         $RuntimeParameterDictionary = New-Object System.Management.Automation.RuntimeDefinedParameterDictionary
-		
+
 		# Set the first parameter
 		## Set the dynamic parameters' name
         $ParamName_Location = 'Location'
@@ -107,10 +107,10 @@ Function Connect-vCenter
 		$ParameterAttribute.ParameterSetName = 'Location'
 		$ParameterAttribute.HelpMessage = 'Location to filter vCenters by as defined in the vcenters.json file'
         ## Add the attributes to the attributes collection
-        $AttributeCollection.Add($ParameterAttribute) 
-        ## Generate and set the ValidateSet 
+        $AttributeCollection.Add($ParameterAttribute)
+        ## Generate and set the ValidateSet
         $arrSet = @(($global:vCenterObjects | Select -Unique Location).Location)
-        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)    
+        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)
         ## Add the ValidateSet to the attributes collection
         $AttributeCollection.Add($ValidateSetAttribute)
         ## Create and return the dynamic parameter
@@ -129,17 +129,17 @@ Function Connect-vCenter
 		$ParameterAttribute.ParameterSetName = 'Environment'
 		$ParameterAttribute.HelpMessage = 'Environment to filter vCenters by as defined in the vcenters.json file'
         ## Add the attributes to the attributes collection
-        $AttributeCollection.Add($ParameterAttribute) 
-        ## Generate and set the ValidateSet 
+        $AttributeCollection.Add($ParameterAttribute)
+        ## Generate and set the ValidateSet
         $arrSet = @(($global:vCenterObjects | Select -Unique Environment).Environment)
-        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)    
+        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)
         ## Add the ValidateSet to the attributes collection
         $AttributeCollection.Add($ValidateSetAttribute)
         ## Create and return the dynamic parameter
         $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($ParamName_Environment, [string], $AttributeCollection)
         $RuntimeParameterDictionary.Add($ParamName_Environment, $RuntimeParameter)
 		# End of second parameter
-		
+
         # Return the entire set
         return $RuntimeParameterDictionary
     }
@@ -219,12 +219,12 @@ Function Connect-vCenter
         {
             $vCenters = @(($global:vCenterObjects | Where Location -match $Location).vCenter)
 		}
-		
+
 		if($Environment)
 		{
 			$vCenters = @(($global:vCenterObjects | Where Environment -match $Environment).vCenter)
 		}
-		
+
         Write-Verbose "$vCenters"
 
         foreach ($vCenter in $vCenters)
@@ -873,7 +873,9 @@ Function Get-vCenterSessions
         .SYNOPSIS
             Lists vCenter Sessions.
         .DESCRIPTION
-            Lists all connected vCenter Sessions, and some added properties such as idle time.
+			Lists all connected vCenter Sessions, and some added properties such as idle time.
+		.PARAMETER ExportPath
+			Where to save the file to, including filename
         .EXAMPLE
             Get-vCenterSessions
         .EXAMPLE
@@ -884,10 +886,6 @@ Function Get-vCenterSessions
 	param
 	(
 		[Parameter(Mandatory=$false,
-		ParameterSetName='export')]
-		[switch]$ExportCSV,
-
-		[Parameter(Mandatory=$true,
 		ParameterSetName='export')]
 		[string]$ExportPath
 	)
@@ -910,11 +908,11 @@ Function Get-vCenterSessions
 		{
             $Session | Add-Member -MemberType NoteProperty -Name Status -Value 'Idle'
         }
-        $Session | Add-Member -MemberType NoteProperty -Name IdleMinutes -Value ([Math]::Round(((Get-Date) – ($_.LastActiveTime).ToLocalTime()).TotalMinutes))
+        $Session | Add-Member -MemberType NoteProperty -Name IdleMinutes -Value ([Math]::Round(((Get-Date) - ($_.LastActiveTime).ToLocalTime()).TotalMinutes))
     	$AllSessions += $Session
     }
 
-	if($ExportCSV)
+	if($ExportPath)
 	{
 		$AllSessions | Export-Csv -NoTypeInformation -Path $ExportPath -NoClobber
 	}
@@ -959,7 +957,6 @@ function Get-LastPowerOn
 	return ($events | Select-Object -Last 1 | Select-Object @{N='VM';E={$_.VM.Name}},@{N='LastPoweredOnTime';E={$_.CreatedTime}})
 }
 
-#TODO: Check this function before release
 function Get-ConsolidationRatio
 {
     <#
@@ -995,7 +992,7 @@ function Get-ConsolidationRatio
 
     if(!$Datacenters)
     {
-       $Datacenters = Get-Datacenter
+    	$Datacenters = Get-Datacenter
     }
 
     $objDataCenters=Foreach ($dc in $Datacenters)
@@ -1054,7 +1051,6 @@ function Get-ConsolidationRatio
     return $objDatacenters
 }
 
-#TODO: Check this function before release
 function Get-ConsoleAsText
 {
 	<#
@@ -1072,8 +1068,8 @@ function Get-ConsoleAsText
 	# Check the host name and exit if the host is not the Windows PowerShell console host.
 	if ($host.Name -ne 'ConsoleHost')
 	{
-	  write-host -ForegroundColor Red "This script runs only in the console host. You cannot run this script in $($host.Name)."
-	  exit -1
+		write-host -ForegroundColor Red "This script runs only in the console host. You cannot run this script in $($host.Name)."
+		exit -1
 	}
 
 	# Initialize string builder.
@@ -1088,18 +1084,18 @@ function Get-ConsoleAsText
 	# Iterate through the lines in the console buffer.
 	for($i = 0; $i -lt $bufferHeight; $i++)
 	{
-	  for($j = 0; $j -lt $bufferWidth; $j++)
-	  {
-	    $cell = $buffer[$i,$j]
-	    $null = $textBuilder.Append($cell.Character)
-	  }
-	  $null = $textBuilder.Append("`r`n")
+		for($j = 0; $j -lt $bufferWidth; $j++)
+		{
+			$cell = $buffer[$i,$j]
+			$null = $textBuilder.Append($cell.Character)
+		}
+
+		$null = $textBuilder.Append("`r`n")
 	}
 
 	return $textBuilder.ToString()
 }
 
-#TODO: Check this function before release
 function Get-VMXPath
 {
 	<#
@@ -1144,7 +1140,6 @@ function Get-VMXPath
 	}
 }
 
-#TODO: Check this function before release
 function Get-ConnectedvCenters
 {
 	$vCenterData = @()
@@ -1157,7 +1152,6 @@ function Get-ConnectedvCenters
 	return $vCenterData
 }
 
-#TODO: Check this function before release
 function Get-Lsh
 {
     <#
@@ -1179,7 +1173,6 @@ function Get-Lsh
     $n * [Math]::Pow(2, $bits)
 }
 
-#TODO: Check this function before release
 function Get-VersionStringAsObject
 {
     <#
@@ -1219,7 +1212,6 @@ function Get-VersionStringAsObject
 	return $tmpObj
 }
 
-#TODO: Check this function before release
 function Get-VersionStringAsArray
 {
     <#
@@ -1247,7 +1239,6 @@ function Get-VersionStringAsArray
     [UInt32] ((Get-Lsh $parts[1] 16) + $parts[2])
 }
 
-#TODO: Check this function before release
 function Test-IsEven
 {
 	param
@@ -1265,33 +1256,6 @@ function Test-IsEven
 	return $retVal
 }
 
-#TODO: Check this function before release
-function Get-HostRAMUsage
-{
-    [CmdletBinding()]
-    param
-    (
-        [Parameter(Mandatory=$false)]
-        [int]$Threshold = 80,
-
-        [Parameter(Mandatory=$true)]
-        [string[]]$MailRecipients
-    )
-
-    $oItem=get-vmhost | Where {[int]($_.PercentUsedRAM -replace '%') -gt $Threshold} | Select Name, Parent, PercentUsedRAM | Sort-Object -Property PercentUsedRAM -Descending
-
-    if($oItem)
-    {
-        $Css = "<style type=$([char]34)text/css$([char]34)>"
-	    $Css += Get-Content '\\jdshare\GHNSVirtualization\VMWARE\PowerCLI\Scripts\Support Files\General.css'
-	    $Css += "</style>"
-
-        $j=$oItem | ConvertTo-Html -PreContent "Hosts with greater than $($Threshold)% memory usage" -Head $Css
-        Send-MailMessage -Body "$j" -BodyAsHtml -To $MailRecipients -From "NoReply@johndeere.com" -SmtpServer mail.dx.deere.com -Subject "Test"
-    }
-}
-
-#TODO: Check this function before release
 function Get-VMPerfStat
 {
     <#
@@ -1363,42 +1327,40 @@ function Get-VMPerfStat
 	return $PerfStat
 }
 
-#TODO: Check this function before release
 function Get-VMHostPerfStat
 {
-   param ( [string]$VMhostName,
-      [int]$Days = "30"
-   )
-   Begin
-   {
-      $PerfStat = New-Object PSObject
-      $VMhost = Get-VMhost $VMhostName
-      $todayMidnight = ( Get-Date -Hour 0 -Minute 0 -Second 0 ).AddMinutes( -1 )
+	param (
+		[string]$VMhostName,
+		[int]$Days = "30"
+	)
+	Begin
+	{
+		$PerfStat = New-Object PSObject
+		$VMhost = Get-VMhost $VMhostName
+		$todayMidnight = ( Get-Date -Hour 0 -Minute 0 -Second 0 ).AddMinutes( -1 )
 
 
-      $cpustat = $VMhost | Get-Stat -Stat cpu.usage.average -Start $todayMidnight.AddDays( - $Days ) -Finish $todayMidnight.AddDays( -1 ) | where { $_.Instance -eq "" }
-      $cpuuse = ( $cpustat | Measure-Object -Property Value -Maximum -Minimum -Average )
-      $memstat = $VMhost | Get-Stat -Stat mem.usage.average -Start $todayMidnight.AddDays( - $Days ) -Finish $todayMidnight.AddDays( -1 ) | where { $_.Instance -eq "" }
-      $memuse = ( $memstat | Measure-Object -Property Value -Maximum -Minimum -Average )
-   }
-   Process
-   {
-      $PerfStat | add-member -MemberType NoteProperty -name "VMhostName" -Value $VMhost.Name
-      $PerfStat | add-member -MemberType NoteProperty -name "CPUAv%" -Value ( [System.Math]::Round( $cpuuse.Average, 2 ) )
-      $PerfStat | add-member -MemberType NoteProperty -name "CPUMax%" -Value ( [System.Math]::Round( $cpuuse.Maximum, 2 ) )
-      $PerfStat | add-member -MemberType NoteProperty -name "CPUMin%" -Value ( [System.Math]::Round( $cpuuse.Minimum, 2 ) )
-      $PerfStat | add-member -MemberType NoteProperty -name "MemAv%" -Value ( [System.Math]::Round( $memuse.Average, 2 ) )
-      $PerfStat | add-member -MemberType NoteProperty -name "MemMax%" -Value ( [System.Math]::Round( $memuse.Maximum, 2 ) )
-      $PerfStat | add-member -MemberType NoteProperty -name "MemMin%" -Value ( [System.Math]::Round( $memuse.Minimum, 2 ) )
-   }
-   End
-   {
-      $PerfStat
-
-   }
+		$cpustat = $VMhost | Get-Stat -Stat cpu.usage.average -Start $todayMidnight.AddDays( - $Days ) -Finish $todayMidnight.AddDays( -1 ) | where { $_.Instance -eq "" }
+		$cpuuse = ( $cpustat | Measure-Object -Property Value -Maximum -Minimum -Average )
+		$memstat = $VMhost | Get-Stat -Stat mem.usage.average -Start $todayMidnight.AddDays( - $Days ) -Finish $todayMidnight.AddDays( -1 ) | where { $_.Instance -eq "" }
+		$memuse = ( $memstat | Measure-Object -Property Value -Maximum -Minimum -Average )
+	}
+	Process
+	{
+		$PerfStat | add-member -MemberType NoteProperty -name "VMhostName" -Value $VMhost.Name
+		$PerfStat | add-member -MemberType NoteProperty -name "CPUAv%" -Value ( [System.Math]::Round( $cpuuse.Average, 2 ) )
+		$PerfStat | add-member -MemberType NoteProperty -name "CPUMax%" -Value ( [System.Math]::Round( $cpuuse.Maximum, 2 ) )
+		$PerfStat | add-member -MemberType NoteProperty -name "CPUMin%" -Value ( [System.Math]::Round( $cpuuse.Minimum, 2 ) )
+		$PerfStat | add-member -MemberType NoteProperty -name "MemAv%" -Value ( [System.Math]::Round( $memuse.Average, 2 ) )
+		$PerfStat | add-member -MemberType NoteProperty -name "MemMax%" -Value ( [System.Math]::Round( $memuse.Maximum, 2 ) )
+		$PerfStat | add-member -MemberType NoteProperty -name "MemMin%" -Value ( [System.Math]::Round( $memuse.Minimum, 2 ) )
+	}
+	End
+	{
+		$PerfStat
+	}
 }
 
-#TODO: Check this function before release
 function Get-CapacityPlanningData
 {
     <#
@@ -1471,6 +1433,214 @@ function Get-CapacityPlanningData
     return $retObj
 }
 
+function Get-VIEventPlus
+{
+	<#
+		.SYNOPSIS
+			Returns vSphere events
+		.DESCRIPTION
+			The function will return vSphere events. With the available parameters, the execution time can be improved, compered to the original Get-VIEvent cmdlet.
+		.PARAMETER Entity
+			When specified the function returns events for the specific vSphere entity. By default events for all vSphere entities are returned.
+		.PARAMETER EventType
+			This parameter limits the returned events to those specified on this parameter.
+		.PARAMETER Start
+			The start date of the events to retrieve
+		.PARAMETER Finish
+			The end date of the events to retrieve.
+		.PARAMETER Recurse
+			A switch indicating if the events for the children of the Entity will also be returned
+		.PARAMETER User
+			The list of usernames for which events will be returned
+		.PARAMETER System
+			A switch that allows the selection of all system events.
+		.PARAMETER ScheduledTask
+			The name of a scheduled task for which the events will be returned
+		.PARAMETER FullMessage
+			A switch indicating if the full message shall be compiled. This switch can improve the execution speed if the full message is not needed.
+		.EXAMPLE
+			Get-VIEventPlus -Entity $vm
+		.EXAMPLE
+			Get-VIEventPlus -Entity $cluster -Recurse:$true
+	#>
+	[CmdletBinding()]
+	param(
+		[VMware.VimAutomation.ViCore.Impl.V1.Inventory.InventoryItemImpl[]]$Entity,
+
+		[string[]]$EventType,
+
+		[DateTime]$Start,
+
+		[DateTime]$Finish = (Get-Date),
+
+		[switch]$Recurse,
+
+		[string[]]$User,
+
+		[Switch]$System,
+
+		[string]$ScheduledTask,
+
+		[switch]$FullMessage = $false
+	)
+	process
+	{
+		$eventnumber = 100
+		$events = @()
+		$eventMgr = Get-View EventManager
+		$eventFilter = New-Object VMware.Vim.EventFilterSpec
+		$eventFilter.disableFullMessage = ! $FullMessage
+		$eventFilter.entity = New-Object VMware.Vim.EventFilterSpecByEntity
+		$eventFilter.entity.recursion = & { if ($Recurse) { "all" }else { "self" } }
+		$eventFilter.eventTypeId = $EventType
+
+		if ($Start -or $Finish)
+		{
+			$eventFilter.time = New-Object VMware.Vim.EventFilterSpecByTime
+			if ($Start)
+			{
+				$eventFilter.time.beginTime = $Start
+			}
+			if ($Finish)
+			{
+				$eventFilter.time.endTime = $Finish
+			}
+		}
+
+		if ($User -or $System)
+		{
+			$eventFilter.UserName = New-Object VMware.Vim.EventFilterSpecByUsername
+			if ($User)
+			{
+				$eventFilter.UserName.userList = $User
+			}
+			if ($System)
+			{
+				$eventFilter.UserName.systemUser = $System
+			}
+		}
+
+		if ($ScheduledTask)
+		{
+			$si = Get-View ServiceInstance
+			$schTskMgr = Get-View $si.Content.ScheduledTaskManager
+			$eventFilter.ScheduledTask = Get-View $schTskMgr.ScheduledTask |
+			where { $_.Info.Name -match $ScheduledTask } |
+			Select -First 1 |
+			Select -ExpandProperty MoRef
+		}
+
+		if (!$Entity)
+		{
+			$Entity = @(Get-Folder -Name Datacenters)
+		}
+
+		$entity | % {
+			$eventFilter.entity.entity = $_.ExtensionData.MoRef
+			$eventCollector = Get-View ($eventMgr.CreateCollectorForEvents($eventFilter))
+			$eventsBuffer = $eventCollector.ReadNextEvents($eventnumber)
+			while ($eventsBuffer)
+			{
+			$events += $eventsBuffer
+			$eventsBuffer = $eventCollector.ReadNextEvents($eventnumber)
+			}
+			$eventCollector.DestroyCollector()
+		}
+
+		$events
+	}
+}
+
+function Get-MotionHistory
+{
+	<#
+		.SYNOPSIS
+			Returns the vMotion/svMotion history
+		.DESCRIPTION
+			The function will return information on all the vMotions and svMotions that occurred over a specific interval for a defined number of virtual machines
+		.PARAMETER Entity
+			The vSphere entity. This can be one more virtual machines, or it can be a vSphere container. If the parameter is a container, the function will return the history for all the virtual machines in that container.
+		.PARAMETER Days
+			An integer that indicates over how many days in the past the function should report on.
+		.PARAMETER Hours
+			An integer that indicates over how many hours in the past the function should report on.
+		.PARAMETER Minutes
+			An integer that indicates over how many minutes in the past the function should report on.
+		.PARAMETER Sort
+			An switch that indicates if the results should be returned in chronological order.
+		.EXAMPLE
+			Get-MotionHistory -Entity $vm -Days 1
+		.EXAMPLE
+			Get-MotionHistory -Entity $cluster -Sort:$false
+		.EXAMPLE
+			Get-Datacenter -Name $dcName | Get-MotionHistory -Days 7 -Sort:$false
+	#>
+	[CmdletBinding(DefaultParameterSetName = "Days")]
+	param(
+		[Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+		[VMware.VimAutomation.ViCore.Impl.V1.Inventory.InventoryItemImpl[]]$Entity,
+
+		[Parameter(ParameterSetName = 'Days')]
+		[int]$Days = 1,
+
+		[Parameter(ParameterSetName = 'Hours')]
+		[int]$Hours,
+
+		[Parameter(ParameterSetName = 'Minutes')]
+		[int]$Minutes,
+
+		[switch]$Recurse = $false,
+
+		[switch]$Sort = $true
+	)
+	begin
+	{
+		$history = @()
+		switch ($psCmdlet.ParameterSetName)
+		{
+			'Days'
+			{
+				$start = (Get-Date).AddDays(- $Days)
+			}
+			'Hours'
+			{
+				$start = (Get-Date).AddHours(- $Hours)
+			}
+			'Minutes'
+			{
+				$start = (Get-Date).AddMinutes(- $Minutes)
+			}
+		}
+
+		$eventTypes = "DrsVmMigratedEvent", "VmMigratedEvent"
+	}
+	process
+	{
+		$history += Get-VIEventPlus -Entity $entity -Start $start -EventType $eventTypes -Recurse:$Recurse |
+		Select CreatedTime,
+		@{N = "Type"; E = {
+			if ($_.SourceDatastore.Name -eq $_.Ds.Name) { "vMotion" }else { "svMotion" } }
+		},
+		@{N = "UserName"; E = { if ($_.UserName) { $_.UserName }else { "System" } } },
+		@{N = "VM"; E = { $_.VM.Name } },
+		@{N = "SrcVMHost"; E = { $_.SourceHost.Name.Split('.')[0] } },
+		@{N = "TgtVMHost"; E = { if ($_.Host.Name -ne $_.SourceHost.Name) { $_.Host.Name.Split('.')[0] } } },
+		@{N = "SrcDatastore"; E = { $_.SourceDatastore.Name } },
+		@{N = "TgtDatastore"; E = { if ($_.Ds.Name -ne $_.SourceDatastore.Name) { $_.Ds.Name } } }
+	}
+	end
+	{
+		if ($Sort)
+		{
+			$history | Sort-Object -Property CreatedTime
+		}
+		else
+		{
+			$history
+		}
+	}
+}
+
 #region "PowerCLI Settings"
 Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -DefaultVIServerMode Multiple -DisplayDeprecationWarnings $true -Scope Session -Confirm:$false
 #endregion
@@ -1509,7 +1679,7 @@ New-VIProperty -Name OverCommitPercent -ObjectType Datastore -Value {
 New-VIProperty -Name OverCommitRatio -ObjectType Datastore -Value {
                     param($datastore)
 
-                   '{0:N2}' -f ($datastore.ProvisionedVMStorageGB / $datastore.CapacityGB)
+                	'{0:N2}' -f ($datastore.ProvisionedVMStorageGB / $datastore.CapacityGB)
                 }
 
 New-VIProperty -Name RemoteHost -ObjectType Datastore -Value {
@@ -1547,7 +1717,7 @@ New-VIProperty -Name SanLunId -ObjectType Datastore -Value {
 
 					[string]$lunID = ""
 
-					if(($datastore.Type -eq "VMFS") -and ($datastore.Name -notmatch "vmfsvol1"))
+					if($datastore.Type -eq "VMFS")
 					{
 						$lunID = $datastore.ExtensionData.Info.Vmfs.Extent.DiskName.Substring($datastore.ExtensionData.Info.Vmfs.Extent.DiskName.Length - 4)
 					}
@@ -1691,7 +1861,7 @@ New-VIProperty -Name RemainingUsableRamGb -ObjectType Cluster -Value {
 New-VIProperty -Name DatastoreList -ObjectType VirtualMachine -Value {
 					param($VirtualMachine)
 
-					($VirtualMachine.ExtensionData.Config.DatastoreUrl | Where {$_.Name -NotMatch "nfsdsswp" -and $_.Name -NotMatch "swap" -and $_.Name -notmatch "guestOsMedia" -and $_.name -notmatch "nfsvolswp"} | Select Name).Name
+					($VirtualMachine.ExtensionData.Config.DatastoreUrl | Select Name).Name
 				} -ErrorAction SilentlyContinue -Verbose:$false -WarningAction SilentlyContinue
 
 New-VIProperty -ObjectType VMHost -Name AvgRAMUsage24Hr -Value {
@@ -1722,7 +1892,7 @@ New-VIProperty -ObjectType VMHost -Name SerialNumber -Value {
 					param($viServer)
 
 					(Get-EsxCli -VMHost $viServer).hardware.platform.get().SerialNumber
-				 } -Force -WarningAction SilentlyContinue
+				} -Force -WarningAction SilentlyContinue
 #endregion
 
 #region "Custom Alias definitions"
