@@ -1,1 +1,6 @@
+#Do not include the .config directory
 .config/
+
+#Ignore everything in the Modules directory that does not start with vPOSH
+/Modules/*
+!/Modules/vPOSH.*
