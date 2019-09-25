@@ -32,4 +32,9 @@ Based on Semantec Versioning, the following will be used:
 
 Any new module will trigger a Minor version change, as will any new feature being added. Removing a feature or any other major changes that could break any existing code will trigger a Major version change. General commits to fix issues or enhance existing features will trigger a Patch increment.
 
+# Special Notes
+
+* The *.config* directory is not included in the repository and requires creation.
+* The *Modules* directory will only have the modules for this framework.  Adding other modules will have no effect on the repository.
+
 # Release History
