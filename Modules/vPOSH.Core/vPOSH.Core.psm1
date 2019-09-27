@@ -8,7 +8,7 @@ $global:vCenterCredentials = ''
 $global:VMGuestCredentials = ''
 function Initialize-Config
 {
-    $global:vCenterObjects = [PSCustomObject[]](Get-Content ./.config/vcenters.json | ConvertFrom-JSON)
+    $global:vCenterObjects = [PSCustomObject[]](Get-Content $env:HOME/vPOSH/.config/vcenters.json | ConvertFrom-JSON)
 }
 
 Initialize-Config
@@ -103,7 +103,7 @@ Function Connect-vCenter
         ## Create and set the parameters' attributes
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
 		$ParameterAttribute.Mandatory = $true
-		$ParameterAttribute.ParameterSetName = 'Location'
+		$ParameterAttribute.ParameterSetName = 'all'
 		$ParameterAttribute.HelpMessage = 'Location to filter vCenters by as defined in the vcenters.json file'
         ## Add the attributes to the attributes collection
         $AttributeCollection.Add($ParameterAttribute)
@@ -125,7 +125,7 @@ Function Connect-vCenter
         ## Create and set the parameters' attributes
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
 		$ParameterAttribute.Mandatory = $true
-		$ParameterAttribute.ParameterSetName = 'Environment'
+		$ParameterAttribute.ParameterSetName = 'all'
 		$ParameterAttribute.HelpMessage = 'Environment to filter vCenters by as defined in the vcenters.json file'
         ## Add the attributes to the attributes collection
         $AttributeCollection.Add($ParameterAttribute)
@@ -203,15 +203,7 @@ Function Connect-vCenter
 
         if ($All)
         {
-            if ($UseSSPI)
-            {
-                Write-Verbose "Using SSPI style connection"
-                $vCenters = Get-vCentersFromDashboard
-            }
-            else
-            {
-                $vCenters = Get-vCentersFromDashboard
-            }
+            $vCenters = $global:vCenterObjects | Select vCenter
         }
 
         if ($Location)
@@ -222,6 +214,11 @@ Function Connect-vCenter
 		if($Environment)
 		{
 			$vCenters = @(($global:vCenterObjects | Where Environment -match $Environment).vCenter)
+		}
+
+		if($Environment -and $Location)
+		{
+			$vCenters = @(($global:vCenterObjects | Where {$_.Environment -match $Environment} -and {$_.Location -match $Location}).vCenter)
 		}
 
         Write-Verbose "$vCenters"

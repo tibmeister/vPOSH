@@ -10,7 +10,14 @@ Powershell v5 or higher must be installed along with PowerCLI 10.2.0.9372002 or 
 
 # Installing / Getting Started
 
-a **vcenters.json** file must be present in the *.config* folder in order to allow for a Connect-vCenter cmdlet to function correctly. the format of this file is as follows:
+A Windows Environment Variable is required in order to get things working correctly.  The variable **$env:HOME** needs to be set, and the easiest way to do this is as follows:
+
+```
+[System.Environment]::SetEnvironmentVariable('HOME','c:\Users\{USERNAME}',[System.EnvironmentVariableTarget]::User)
+```
+Change **{USERNAME}** to your username.  Windows variables like %USERNAME% do not work in Powershell, so setting this at the user level to your username should be fine.
+
+A **vcenters.json** file must be present in the *$env:HOME\vPOSH\.config* folder in order to allow for a Connect-vCenter cmdlet to function correctly. the format of this file is as follows:
 
 ```
 [
