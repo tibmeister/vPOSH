@@ -218,7 +218,7 @@ Function Connect-vCenter
 
 		if($Environment -and $Location)
 		{
-			$vCenters = @(($global:vCenterObjects | Where {$_.Environment -match $Environment} -and {$_.Location -match $Location}).vCenter)
+			$vCenters = @(($global:vCenterObjects | Where {($_.Environment -match $Environment) -and ($_.Location -match $Location)}).vCenter)
 		}
 
         Write-Verbose "$vCenters"
