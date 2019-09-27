@@ -103,7 +103,7 @@ Function Connect-vCenter
         ## Create and set the parameters' attributes
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
 		$ParameterAttribute.Mandatory = $true
-		$ParameterAttribute.ParameterSetName = 'all'
+		$ParameterAttribute.ParameterSetName = 'specified'
 		$ParameterAttribute.HelpMessage = 'Location to filter vCenters by as defined in the vcenters.json file'
         ## Add the attributes to the attributes collection
         $AttributeCollection.Add($ParameterAttribute)
@@ -125,7 +125,7 @@ Function Connect-vCenter
         ## Create and set the parameters' attributes
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
 		$ParameterAttribute.Mandatory = $true
-		$ParameterAttribute.ParameterSetName = 'all'
+		$ParameterAttribute.ParameterSetName = 'specified'
 		$ParameterAttribute.HelpMessage = 'Environment to filter vCenters by as defined in the vcenters.json file'
         ## Add the attributes to the attributes collection
         $AttributeCollection.Add($ParameterAttribute)
