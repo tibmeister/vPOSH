@@ -203,7 +203,7 @@ Function Connect-vCenter
 
         if ($All)
         {
-            $vCenters = $global:vCenterObjects | Select vCenter
+            $vCenters = ($global:vCenterObjects).vCenter
         }
 
         if ($Location)
