@@ -751,7 +751,8 @@ Function Watch-Command
 	    else
 		{
 	        $Host.UI.RawUI.CursorPosition = $origin
-	    }
+		}
+		Write-Host "Update Interval: $($WaitSeconds)s`tLast Update: $(Get-Date -Format T)`n"
 	    Write-Host $sb -NoNewLine
 	    $private:cursor = $Host.UI.RawUI.CursorPosition
 	    if ($n -lt $h)
