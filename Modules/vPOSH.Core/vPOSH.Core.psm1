@@ -303,8 +303,9 @@ function Get-VMLastPowerTimes
 
     $results = foreach($VM in $VMs)
     {
-        $eventsOn = $VM | Get-VIEvent -MaxSamples 10000 | Where {$_.FullFormattedMessage -like "*powered on*"}
-        $eventsOff = $VM | Get-VIEvent -MaxSamples 10000 | Where {$_.FullFormattedMessage -like "*powered off*"}
+		$VM = Get-VM
+        $eventsOn = Get-VIEvent -Entity $VM -MaxSamples 10000 | Where {$_.FullFormattedMessage -like "*powered on*"}
+        $eventsOff = Get-VIEvent -Entity $VM -MaxSamples 10000 | Where {$_.FullFormattedMessage -like "*powered off*"}
 
         New-Object PSObject -Property @{
             Name=$VM.Name
