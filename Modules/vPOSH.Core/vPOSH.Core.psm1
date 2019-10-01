@@ -1757,6 +1757,12 @@ New-VIProperty -Name vCenter -ObjectType VMHost -Value {
 					return ((($vmHost.Uid.Split("/")[1] -split("="))[1] -split("@"))[1] -split(":"))[0]
 	} -Force
 
+New-VIProperty -Name vCenter -ObjectType Cluster -Value {
+		param($cluster)
+
+		return ((($cluster.Uid.Split("/")[1] -split("="))[1] -split("@"))[1] -split(":"))[0]
+	} -Force
+
 New-VIProperty -Name vCenter -ObjectType DataCenter -Value {
 					param($dataCenter)
 
