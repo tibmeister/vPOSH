@@ -2,8 +2,8 @@ $MaximumHistoryCount = 4096
 
 #Bootstrap Code
 $myDocsPath = [environment]::GetFolderPath("mydocuments")
-$vPOSHPath = "$($env:HOME)\source\repos\vPOSH"
-$vPOSHPathTest = "$($env:HOME)\source\repos\vPOSHTest"
+$vPOSHPath = "$($myDocsPath)\vPOSH"
+$vPOSHPathTest = "$($myDocsPath)\vPOSHTest"
 $global:historyPath = "$($myDocsPath)\WindowsPowerShell\history.clixml"
 $env:PSModulePath += ";$($vPOSHPath)\Modules"
 $ReposPath = "$($env:HOME)\source\repos"
