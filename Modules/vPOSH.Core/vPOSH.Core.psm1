@@ -72,10 +72,10 @@ Function Connect-vCenter
         [Parameter(ParameterSetName = 'sspi')]
         [switch]$UseSSPI = $false,
 
-        [Parameter(mandatory = $true,
-            HelpMessage = 'Indicate that you want to select a connection server from a list of recently connected servers.',
-            ParameterSetName = 'menu')]
-        [switch]$Menu = $false,
+      #   [Parameter(mandatory = $true,
+      #       HelpMessage = 'Indicate that you want to select a connection server from a list of recently connected servers.',
+      #       ParameterSetName = 'menu')]
+      #   [switch]$Menu = $false,
 
         [Parameter(mandatory = $true,
             HelpMessage = 'Indicate that you want to connect to all vCenters.',
