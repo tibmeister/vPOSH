@@ -8,7 +8,8 @@ $global:vCenterCredentials = ''
 $global:VMGuestCredentials = ''
 function Initialize-Config
 {
-    $global:vCenterObjects = [PSCustomObject[]](Get-Content $env:HOME/vPOSH/.config/vcenters.json | ConvertFrom-JSON)
+	## The $Global:vPOSHConfigPath variable must be set before calling this, such as in a profile.
+    $global:vCenterObjects = [PSCustomObject[]](Get-Content $Global:vPOSHConfigPath/vcenters.json | ConvertFrom-JSON)
 }
 
 Initialize-Config

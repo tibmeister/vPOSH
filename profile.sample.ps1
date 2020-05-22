@@ -7,6 +7,7 @@ $vPOSHPathTest = "$($env:HOME)\source\repos\vPOSHTest"
 $global:historyPath = "$($myDocsPath)\WindowsPowerShell\history.clixml"
 $env:PSModulePath += ";$($vPOSHPath)\Modules"
 $ReposPath = "$($env:HOME)\source\repos"
+$Global:vPOSHConfigPath = "$($myDocsPath)\vPOSH_Config\.config"
 
 . "$($vPOSHPath)\gitutils.ps1"
 
